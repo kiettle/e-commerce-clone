@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package product.events;
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+
+message ProductEvent {
+  string event_id = 1;
+  EventType event_type = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+
+  oneof payload {
+    ProductCreated product_created = 10;
+    ProductSkuAdded product_sku_added = 11;
+  }
+}
+
+enum EventType {
+  PRODUCT_CREATED = 0;
+  PRODUCT_SKU_ADDED = 1;
+}
+
+message ProductCreated {
+  int64 product_id = 1;
+  string name = 2;
+ 
+  repeated ProductSkuSnapshot skus = 3;
+}
+
+message ProductSkuSnapshot {
+  int64 product_sku_id = 1;
+  string sku_code = 2;
+  string status = 3;
+  int64 quantity = 4;
+}
+
+message ProductSkuAdded {
+  int64 product_id = 1;
+  ProductSkuSnapshot sku = 2;
+}

@@ -1,0 +1,94 @@
+{
+  "name": "e-commerce-nest-microservices",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "nest build",
+    "build:all": "nest build gateway && nest build auth-service && nest build product-service && nest build inventory-service && nest build cart-service && nest build order-service",
+    "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
+    "lint": "eslint \"{apps,libs}/**/*.ts\"",
+    "start:dev:gateway": "nest start gateway --watch",
+    "start:dev:auth": "nest start auth-service --watch",
+    "start:dev:product": "nest start product-service --watch",
+    "start:dev:inventory": "nest start inventory-service --watch",
+    "start:dev:cart": "nest start cart-service --watch",
+    "start:dev:order": "nest start order-service --watch",
+    "start:prod:gateway": "node dist/apps/gateway/main.js",
+    "start:prod:auth": "node dist/apps/auth-service/main.js",
+    "start:prod:product": "node dist/apps/product-service/main.js",
+    "start:prod:inventory": "node dist/apps/inventory-service/main.js",
+    "start:prod:cart": "node dist/apps/cart-service/main.js",
+    "start:prod:order": "node dist/apps/order-service/main.js",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "1.14.4",
+    "@grpc/proto-loader": "0.8.1",
+    "@nestjs/common": "11.1.27",
+    "@nestjs/config": "4.0.4",
+    "@nestjs/core": "11.1.27",
+    "@nestjs/jwt": "11.0.2",
+    "@nestjs/microservices": "11.1.27",
+    "@nestjs/passport": "11.0.5",
+    "@nestjs/platform-express": "11.1.27",
+    "@nestjs/swagger": "11.4.4",
+    "@prisma/client": "7.8.0",
+    "bcrypt": "6.0.0",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.15.1",
+    "joi": "18.2.3",
+    "kafkajs": "2.2.4",
+    "passport": "0.7.0",
+    "passport-jwt": "4.0.1",
+    "pg": "8.22.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "11.0.23",
+    "@nestjs/schematics": "11.1.0",
+    "@nestjs/testing": "11.1.27",
+    "@swc/core": "1.15.43",
+    "@swc/jest": "0.2.39",
+    "@types/bcrypt": "6.0.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "26.0.1",
+    "@types/passport-jwt": "4.0.1",
+    "@types/supertest": "7.2.0",
+    "eslint": "10.5.0",
+    "jest": "30.4.2",
+    "prettier": "3.8.4",
+    "prisma": "7.8.0",
+    "supertest": "7.2.2",
+    "ts-node": "10.9.2",
+    "ts-loader": "9.6.2",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.62.0",
+    "globals": "17.7.0"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": [
+        "@swc/jest"
+      ]
+    },
+    "moduleNameMapper": {
+      "^@app/common$": "<rootDir>/libs/common/src",
+      "^@app/common/(.*)$": "<rootDir>/libs/common/src/$1"
+    },
+    "testEnvironment": "node"
+  }
+}

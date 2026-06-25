@@ -1,0 +1,94 @@
+services:
+  postgres-product:
+    image: postgres:17
+    container_name: postgres-product
+    environment:
+      POSTGRES_DB: product_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5001:5432"
+    volumes:
+      - postgres_product_data:/var/lib/postgresql/data
+
+  postgres-cart:
+    image: postgres:17
+    container_name: postgres-cart
+    environment:
+      POSTGRES_DB: cart_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5002:5432"
+    volumes:
+      - postgres_cart_data:/var/lib/postgresql/data
+
+  postgres-inventory:
+    image: postgres:17
+    container_name: postgres-inventory
+    environment:
+      POSTGRES_DB: inventory_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5003:5432"
+    volumes:
+      - postgres_inventory_data:/var/lib/postgresql/data
+
+  postgres-order:
+    image: postgres:17
+    container_name: postgres-order
+    environment:
+      POSTGRES_DB: order_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5004:5432"
+    volumes:
+      - postgres_order_data:/var/lib/postgresql/data
+
+  postgres-auth:
+    image: postgres:17
+    container_name: postgres-auth
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5005:5432"
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+
+  redpanda:
+    image: redpandadata/redpanda:v24.3.6
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092,OUTSIDE://0.0.0.0:9094
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092,OUTSIDE://localhost:9094
+    ports:
+      - "9094:9094"
+      - "9644:9644"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+
+volumes:
+  postgres_product_data:
+  postgres_cart_data:
+  postgres_inventory_data:
+  postgres_order_data:
+  postgres_auth_data:
+  redpanda_data:
