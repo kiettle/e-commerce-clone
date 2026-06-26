@@ -6,3 +6,7 @@ coverage
 .DS_Store
 *.log
 prisma/generated
+apps/**/src/**/*.js
+apps/**/src/**/*.js.map
+libs/**/src/**/*.js
+libs/**/src/**/*.js.map
