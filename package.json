@@ -12,6 +12,10 @@
     "prisma:auth:migrate": "prisma migrate dev --config apps/auth-service/prisma/prisma.config.ts",
     "prisma:auth:deploy": "prisma migrate deploy --config apps/auth-service/prisma/prisma.config.ts",
     "prisma:auth:seed": "prisma db execute --config apps/auth-service/prisma/prisma.config.ts --file apps/auth-service/prisma/seed.sql",
+    "prisma:product:generate": "prisma generate --config apps/product-service/prisma/prisma.config.ts",
+    "prisma:product:migrate": "prisma migrate dev --config apps/product-service/prisma/prisma.config.ts",
+    "prisma:product:deploy": "prisma migrate deploy --config apps/product-service/prisma/prisma.config.ts",
+    "prisma:product:seed": "prisma db execute --config apps/product-service/prisma/prisma.config.ts --file apps/product-service/prisma/seed.sql",
     "start:dev:gateway": "nest start gateway --watch",
     "start:dev:auth": "nest start auth-service --watch",
     "start:dev:product": "nest start product-service --watch",
@@ -48,6 +52,7 @@
     "passport": "0.7.0",
     "passport-jwt": "4.0.1",
     "pg": "8.22.0",
+    "protobufjs": "7.6.4",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2"
   },
@@ -63,15 +68,15 @@
     "@types/passport-jwt": "4.0.1",
     "@types/supertest": "7.2.0",
     "eslint": "10.5.0",
+    "globals": "17.7.0",
     "jest": "30.4.2",
     "prettier": "3.8.4",
     "prisma": "7.8.0",
     "supertest": "7.2.2",
-    "ts-node": "10.9.2",
     "ts-loader": "9.6.2",
+    "ts-node": "10.9.2",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.62.0",
-    "globals": "17.7.0"
+    "typescript-eslint": "8.62.0"
   },
   "engines": {
     "node": ">=22.0.0",

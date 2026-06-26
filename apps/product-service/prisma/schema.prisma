@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../prisma/generated/product"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+  DELETED
+}
+
+enum ProductSkuStatus {
+  AVAILABLE
+  OUT_OF_STOCK
+  DISABLED
+  DISCONTINUED
+}
+
+model Category {
+  id        BigInt    @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  slug      String    @db.VarChar(255)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  products  Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          BigInt        @id @default(autoincrement())
+  name        String        @db.VarChar(255)
+  description String?
+  imageUrl    String?       @map("image_url")
+  categoryId  BigInt        @map("category_id")
+  sellerId    BigInt        @map("seller_id")
+  status      ProductStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  category    Category      @relation(fields: [categoryId], references: [id])
+  skus        ProductSku[]
+
+  @@map("products")
+}
+
+model ProductSku {
+  id        BigInt           @id @default(autoincrement())
+  productId BigInt           @map("product_id")
+  skuCode   String           @map("sku_code") @db.VarChar(255)
+  price     Decimal          @db.Decimal(10, 2)
+  status    ProductSkuStatus @default(AVAILABLE)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+  product   Product          @relation(fields: [productId], references: [id])
+
+  @@unique([productId, skuCode])
+  @@map("product_skus")
+}
