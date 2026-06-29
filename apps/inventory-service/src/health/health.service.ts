@@ -9,7 +9,7 @@ import {
 const SERVICE_NAME = 'inventory-service';
 
 @Injectable()
-export class AppService {
+export class HealthService {
   health(): HealthResponse {
     return createHealthResponse(SERVICE_NAME);
   }

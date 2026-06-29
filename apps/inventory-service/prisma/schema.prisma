@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../prisma/generated/inventory"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum InventoryStockStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum StockReservationStatus {
+  RESERVED
+  RELEASED
+}
+
+enum StockTransactionType {
+  INITIALIZE
+  RESERVE
+  RELEASE
+}
+
+model InventoryStock {
+  id                BigInt               @id @default(autoincrement())
+  productId         BigInt               @map("product_id")
+  productSkuId      BigInt               @unique @map("product_sku_id")
+  skuCode           String               @map("sku_code") @db.VarChar(255)
+  status            InventoryStockStatus @default(ACTIVE)
+  availableQuantity Int                  @map("available_quantity")
+  reservedQuantity  Int                  @default(0) @map("reserved_quantity")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  reservations      StockReservation[]
+  transactions      StockTransaction[]
+
+  @@index([productId])
+  @@index([status])
+  @@map("inventory_stocks")
+}
+
+model StockReservation {
+  id           BigInt                 @id @default(autoincrement())
+  cartId       BigInt                 @map("cart_id")
+  productSkuId BigInt                 @map("product_sku_id")
+  quantity     Int
+  status       StockReservationStatus @default(RESERVED)
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+  releasedAt   DateTime?              @map("released_at")
+  stock        InventoryStock         @relation(fields: [productSkuId], references: [productSkuId])
+
+  @@unique([cartId, productSkuId])
+  @@index([status])
+  @@map("stock_reservations")
+}
+
+model StockTransaction {
+  id           BigInt               @id @default(autoincrement())
+  productSkuId BigInt               @map("product_sku_id")
+  cartId       BigInt?              @map("cart_id")
+  type         StockTransactionType
+  quantity     Int
+  createdAt    DateTime             @default(now()) @map("created_at")
+  stock        InventoryStock       @relation(fields: [productSkuId], references: [productSkuId])
+
+  @@index([productSkuId])
+  @@index([cartId])
+  @@map("stock_transactions")
+}
+
+model ProcessedProductEvent {
+  eventId     String   @id @map("event_id") @db.VarChar(100)
+  eventType   String   @map("event_type") @db.VarChar(50)
+  productId   BigInt?  @map("product_id")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@index([productId])
+  @@map("processed_product_events")
+}
