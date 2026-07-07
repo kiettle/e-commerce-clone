@@ -1,0 +1,58 @@
+import { Controller, Logger } from '@nestjs/common';
+import { GrpcMethod } from '@nestjs/microservices';
+import { CreateOrderUseCase } from '../../application/use-cases/create-order.use-case';
+import { OrderOperationError } from '../../domain/errors/order-operation.error';
+
+interface CreateOrderGrpcRequest {
+  user_id: string;
+  items: Array<{
+    product_sku_id: string;
+    product_name: string;
+    price: number;
+    quantity: number;
+  }>;
+}
+
+interface CreateOrderGrpcResponse {
+  order_id: string;
+  status: string;
+}
+
+@Controller()
+export class OrdersGrpcController {
+  private readonly logger = new Logger(OrdersGrpcController.name);
+
+  constructor(private readonly createOrderUseCase: CreateOrderUseCase) {}
+
+  @GrpcMethod('OrderService', 'CreateOrder')
+  async createOrder(
+    request: CreateOrderGrpcRequest,
+  ): Promise<CreateOrderGrpcResponse> {
+    try {
+      const order = await this.createOrderUseCase.execute({
+        userId: BigInt(request.user_id),
+        items: request.items.map((item) => ({
+          productSkuId: BigInt(item.product_sku_id),
+          productName: item.product_name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+      });
+
+      return {
+        order_id: order.id.toString(),
+        status: order.status,
+      };
+    } catch (error) {
+      if (error instanceof OrderOperationError) {
+        return {
+          order_id: '0',
+          status: `FAILED: ${error.message}`,
+        };
+      }
+
+      this.logger.error('Unexpected order gRPC error.', error);
+      throw error;
+    }
+  }
+}
