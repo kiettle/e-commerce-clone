@@ -3,10 +3,7 @@ import { OrderStatus } from '../../domain/enums/order-status.enum';
 import { PaymentStatus } from '../../domain/enums/payment-status.enum';
 import { InvalidOrderError } from '../../domain/errors/invalid-order.error';
 import { OrderRepositoryPort } from '../../domain/repositories/order.repository.port';
-import {
-  CreateOrderCommand,
-  CreateOrderItemCommand,
-} from '../dto/create-order.command';
+import { CreateOrderCommand, CreateOrderItemCommand } from '../dto/create-order.command';
 
 export class CreateOrderUseCase {
   constructor(private readonly orders: OrderRepositoryPort) {}
@@ -37,10 +34,7 @@ export class CreateOrderUseCase {
 export function calculateTotalAmount(
   items: Array<Pick<CreateOrderItemCommand, 'price' | 'quantity'>>,
 ): number {
-  const total = items.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0,
-  );
+  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   return toMoneyAmount(total);
 }

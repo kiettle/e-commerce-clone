@@ -10,6 +10,8 @@ interface CreateOrderGrpcRequest {
     product_name: string;
     price: number;
     quantity: number;
+    sku_code?: string;
+    image_url?: string;
   }>;
 }
 
@@ -36,6 +38,8 @@ export class OrdersGrpcController {
           productName: item.product_name,
           price: item.price,
           quantity: item.quantity,
+          skuCode: item.sku_code,
+          imageUrl: item.image_url,
         })),
       });
 

@@ -43,6 +43,8 @@ describe('OrdersGrpcController', () => {
           productName: 'Orange Shirt',
           price: 12.5,
           quantity: 2,
+          skuCode: undefined,
+          imageUrl: undefined,
         },
       ],
     });

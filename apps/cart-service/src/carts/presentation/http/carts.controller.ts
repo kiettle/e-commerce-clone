@@ -1,0 +1,96 @@
+import {
+  BadGatewayException,
+  BadRequestException,
+  Controller,
+  Get,
+  Headers,
+  NotFoundException,
+  Param,
+  ParseIntPipe,
+  Post,
+} from '@nestjs/common';
+import { CheckoutCartUseCase } from '../../application/use-cases/checkout-cart.use-case';
+import { GetActiveCartUseCase } from '../../application/use-cases/get-active-cart.use-case';
+import { CartNotFoundError } from '../../domain/errors/cart-not-found.error';
+import { CartOperationError } from '../../domain/errors/cart-operation.error';
+import { CartItemNotFoundError } from '../../domain/errors/cart-item-not-found.error';
+import { InventoryReservationFailedError } from '../../domain/errors/inventory-reservation-failed.error';
+import { InvalidCartOperationError } from '../../domain/errors/invalid-cart-operation.error';
+import { OrderCreationFailedError } from '../../domain/errors/order-creation-failed.error';
+import { ProductSnapshotNotFoundError } from '../../domain/errors/product-snapshot-not-found.error';
+import { ProductSnapshotUnavailableError } from '../../domain/errors/product-snapshot-unavailable.error';
+import {
+  CartResponse,
+  CheckoutCartResponse,
+  toCartResponse,
+} from './cart-response.mapper';
+import { parseUserIdHeader } from './user-id-header';
+
+@Controller('api/carts')
+export class CartsController {
+  constructor(
+    private readonly getActiveCartUseCase: GetActiveCartUseCase,
+    private readonly checkoutCartUseCase: CheckoutCartUseCase,
+  ) {}
+
+  @Get('me')
+  async getActiveCart(
+    @Headers('x-user-id') userIdHeader: string | undefined,
+  ): Promise<CartResponse> {
+    const cart = await this.getActiveCartUseCase.execute(
+      parseUserIdHeader(userIdHeader),
+    );
+
+    return toCartResponse(cart);
+  }
+
+  @Post(':cartId/checkout')
+  async checkoutCart(
+    @Headers('x-user-id') userIdHeader: string | undefined,
+    @Param('cartId', ParseIntPipe) cartId: number,
+  ): Promise<CheckoutCartResponse> {
+    try {
+      const result = await this.checkoutCartUseCase.execute({
+        userId: parseUserIdHeader(userIdHeader),
+        cartId: BigInt(cartId),
+      });
+
+      return {
+        orderId: Number(result.orderId),
+        cart: toCartResponse(result.cart),
+      };
+    } catch (error) {
+      throw mapCartError(error);
+    }
+  }
+}
+
+export function mapCartError(error: unknown): Error {
+  if (
+    error instanceof CartNotFoundError ||
+    error instanceof CartItemNotFoundError ||
+    error instanceof ProductSnapshotNotFoundError
+  ) {
+    return new NotFoundException(error.message);
+  }
+
+  if (
+    error instanceof InvalidCartOperationError ||
+    error instanceof InventoryReservationFailedError
+  ) {
+    return new BadRequestException(error.message);
+  }
+
+  if (
+    error instanceof OrderCreationFailedError ||
+    error instanceof ProductSnapshotUnavailableError
+  ) {
+    return new BadGatewayException(error.message);
+  }
+
+  if (error instanceof CartOperationError) {
+    return new BadRequestException(error.message);
+  }
+
+  return error instanceof Error ? error : new Error('Unknown cart error.');
+}

@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../prisma/generated/cart"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CartStatus {
+  ACTIVE
+  CHECKED_OUT
+  ABANDONED
+}
+
+model Cart {
+  id        BigInt     @id @default(autoincrement())
+  userId    BigInt     @map("user_id")
+  status    CartStatus @default(ACTIVE)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  items     CartItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("carts")
+}
+
+model CartItem {
+  id           BigInt   @id @default(autoincrement())
+  cartId       BigInt   @map("cart_id")
+  productId    BigInt   @map("product_id")
+  productName  String   @map("product_name") @db.VarChar(255)
+  imageUrl     String?  @map("image_url")
+  productSkuId BigInt   @map("product_sku_id")
+  skuCode      String   @map("sku_code") @db.VarChar(255)
+  price        Decimal  @db.Decimal(10, 2)
+  quantity     Int
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  cart         Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productSkuId])
+  @@index([cartId])
+  @@index([productSkuId])
+  @@map("cart_items")
+}
