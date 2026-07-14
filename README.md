@@ -18,7 +18,7 @@ This repository is a portfolio backend project for demonstrating:
 
 | Service | Port | Responsibility |
 | --- | ---: | --- |
-| `gateway` | 4000 | Public HTTP entry point, auth forwarding, Swagger docs |
+| `gateway` | 4000 | Public HTTP entry point, auth/catalog/cart forwarding, Swagger docs |
 | `auth-service` | 4005 / gRPC 9005 | Users, login, JWT generation, token validation |
 | `product-service` | 4001 | Categories, products, SKUs, product-created events |
 | `inventory-service` | 4003 / gRPC 9003 | Stock rows, product event consumer, reserve/release stock |
@@ -46,24 +46,23 @@ If order creation fails after inventory reservation, `cart-service` calls invent
 
 - `POST /api/auth/login`
 - `GET /api/auth/validate`
-- Swagger UI: `GET /docs`
-
-### Product Service
-
 - `GET /api/categories`
 - `POST /api/categories`
 - `GET /api/products`
 - `POST /api/products`
 - `PUT /api/products/:productId`
 - `DELETE /api/products/:productId`
-
-### Cart Service
-
 - `GET /api/carts/me`
 - `POST /api/cart-items`
 - `PUT /api/cart-items/:cartItemId`
 - `DELETE /api/cart-items/:cartItemId`
 - `POST /api/carts/:cartId/checkout`
+- Swagger UI: `GET /docs`
+
+All gateway routes except `POST /api/auth/login` require a bearer token. The
+gateway validates tokens through auth-service gRPC. For cart routes, the gateway
+passes the authenticated user id to cart-service through the internal
+`x-user-id` header.
 
 ### gRPC Contracts
 
@@ -118,6 +117,13 @@ Seed available demo data:
 ```bash
 npm run prisma:auth:seed
 npm run prisma:product:seed
+npm run prisma:inventory:seed
+```
+
+Or seed all demo data in one command:
+
+```bash
+npm run demo:seed
 ```
 
 ## Running Services
@@ -160,8 +166,26 @@ Open gateway Swagger docs:
 http://localhost:4000/docs
 ```
 
-At the moment, gateway exposes auth routes. Product and cart APIs can be called
-directly while gateway forwarding is still being built.
+## Demo Checkout Flow
+
+Use the gateway-first demo after infrastructure, migrations, seeds, and services
+are running:
+
+```bash
+npm run demo:seed
+scripts/demo-checkout.sh
+```
+
+The script logs in as the seeded user, reads products through the gateway, adds a
+seeded SKU to the authenticated user's cart, reads the active cart, and checks
+out. A successful run prints an `orderId`.
+
+Seeded demo credentials:
+
+```text
+email: testuser@test.com
+password: password123
+```
 
 ## Architecture Notes
 
@@ -173,6 +197,4 @@ directly while gateway forwarding is still being built.
 
 ## Current Gaps To Finish Next
 
-- Gateway still needs forwarding routes for product/cart/checkout APIs.
-- Add a simple demo script or README curl flow after gateway forwarding is complete.
 - Add integration tests for the full checkout workflow after unit-test practice.
