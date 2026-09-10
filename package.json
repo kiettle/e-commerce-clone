@@ -39,6 +39,11 @@
     "start:prod:inventory": "node dist/apps/inventory-service/main.js",
     "start:prod:cart": "node dist/apps/cart-service/main.js",
     "start:prod:order": "node dist/apps/order-service/main.js",
+    "demo": "bash scripts/start-demo.sh",
+    "frontend:install": "npm --prefix frontend install",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:lint": "npm --prefix frontend run lint",
     "test": "jest",
     "test:watch": "jest --watch"
   },
