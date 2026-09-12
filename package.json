@@ -44,8 +44,8 @@
     "frontend:dev": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build",
     "frontend:lint": "npm --prefix frontend run lint",
-    "test": "jest",
-    "test:watch": "jest --watch"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@grpc/grpc-js": "1.14.4",
@@ -76,45 +76,25 @@
     "@nestjs/cli": "11.0.23",
     "@nestjs/schematics": "11.1.0",
     "@nestjs/testing": "11.1.27",
-    "@swc/core": "1.15.43",
-    "@swc/jest": "0.2.39",
     "@types/bcrypt": "6.0.0",
-    "@types/jest": "30.0.0",
     "@types/node": "26.0.1",
     "@types/passport-jwt": "4.0.1",
     "@types/supertest": "7.2.0",
+    "@vitest/coverage-v8": "4.1.11",
     "eslint": "10.5.0",
     "globals": "17.7.0",
-    "jest": "30.4.2",
     "prettier": "3.8.4",
     "prisma": "7.8.0",
     "supertest": "7.2.2",
     "ts-loader": "9.6.2",
     "ts-node": "10.9.2",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.62.0"
+    "typescript-eslint": "8.62.0",
+    "vite": "6.4.3",
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=22.0.0",
     "npm": ">=10.0.0"
-  },
-  "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
-    "rootDir": ".",
-    "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": [
-        "@swc/jest"
-      ]
-    },
-    "moduleNameMapper": {
-      "^@app/common$": "<rootDir>/libs/common/src",
-      "^@app/common/(.*)$": "<rootDir>/libs/common/src/$1"
-    },
-    "testEnvironment": "node"
   }
 }

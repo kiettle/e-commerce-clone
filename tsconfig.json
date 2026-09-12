@@ -15,17 +15,10 @@
     "strict": true,
     "skipLibCheck": true,
     "strictPropertyInitialization": false,
-    "types": [
-      "node",
-      "jest"
-    ],
+    "types": ["node"],
     "paths": {
-      "@app/common": [
-        "libs/common/src"
-      ],
-      "@app/common/*": [
-        "libs/common/src/*"
-      ]
+      "@app/common": ["libs/common/src"],
+      "@app/common/*": ["libs/common/src/*"]
     }
   }
 }
