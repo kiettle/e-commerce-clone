@@ -19,10 +19,7 @@ export class LoginUseCase {
       throw new InvalidCredentialsError();
     }
 
-    const passwordMatches = await this.passwordHasher.compare(
-      command.password,
-      user.passwordHash,
-    );
+    const passwordMatches = await this.passwordHasher.compare(command.password, user.passwordHash);
 
     if (!passwordMatches) {
       throw new InvalidCredentialsError();
