@@ -13,17 +13,59 @@ enum CartStatus {
   ABANDONED
 }
 
+enum CheckoutStatus {
+  STARTED
+  STOCK_RESERVED
+  ORDER_CONFIRMED
+  COMPLETED
+  COMPENSATING
+  FAILED
+  RECONCILIATION_REQUIRED
+}
+
+enum ReconciliationAction {
+  RESERVE_STOCK
+  CHECK_ORDER
+  RELEASE_STOCK
+  COMPLETE_CART
+}
+
 model Cart {
-  id        BigInt     @id @default(autoincrement())
-  userId    BigInt     @map("user_id")
-  status    CartStatus @default(ACTIVE)
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
-  items     CartItem[]
+  id              BigInt           @id @default(autoincrement())
+  userId          BigInt           @map("user_id")
+  status          CartStatus       @default(ACTIVE)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  items           CartItem[]
+  checkoutAttempt CheckoutAttempt?
 
   @@index([userId])
   @@index([status])
   @@map("carts")
+}
+
+model CheckoutAttempt {
+  id                   String                @id @default(uuid()) @db.Uuid
+  userId               BigInt                @map("user_id")
+  cartId               BigInt                @unique @map("cart_id")
+  idempotencyKey       String                @map("idempotency_key") @db.Uuid
+  requestHash          String                @map("request_hash") @db.Char(64)
+  itemsSnapshot        Json                  @map("items_snapshot")
+  status               CheckoutStatus        @default(STARTED)
+  orderId              BigInt?               @map("order_id")
+  retryCount           Int                   @default(0) @map("retry_count")
+  nextRetryAt          DateTime?             @map("next_retry_at")
+  lastError            String?               @map("last_error") @db.Text
+  reconciliationAction ReconciliationAction? @map("reconciliation_action")
+  leaseOwner           String?               @map("lease_owner")
+  leaseUntil           DateTime?             @map("lease_until")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  cart                 Cart                  @relation(fields: [cartId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, idempotencyKey])
+  @@index([status, nextRetryAt])
+  @@map("checkout_attempts")
 }
 
 model CartItem {

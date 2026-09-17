@@ -5,6 +5,9 @@ import { OrderItemEntity } from './order-item.entity';
 export interface OrderEntityProps {
   id: bigint;
   userId: bigint;
+  checkoutId?: string | null;
+  cartId?: bigint | null;
+  requestHash?: string | null;
   totalAmount: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
@@ -17,6 +20,9 @@ export interface OrderEntityProps {
 export class OrderEntity {
   readonly id: bigint;
   readonly userId: bigint;
+  readonly checkoutId: string | null;
+  readonly cartId: bigint | null;
+  readonly requestHash: string | null;
   readonly totalAmount: number;
   readonly status: OrderStatus;
   readonly paymentStatus: PaymentStatus;
@@ -28,6 +34,9 @@ export class OrderEntity {
   constructor(props: OrderEntityProps) {
     this.id = props.id;
     this.userId = props.userId;
+    this.checkoutId = props.checkoutId ?? null;
+    this.cartId = props.cartId ?? null;
+    this.requestHash = props.requestHash ?? null;
     this.totalAmount = props.totalAmount;
     this.status = props.status;
     this.paymentStatus = props.paymentStatus;

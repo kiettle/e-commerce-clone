@@ -12,6 +12,9 @@ service OrderService {
 message CreateOrderRequest {
   int64 user_id = 1;
   repeated CreateOrderItem items = 2;
+  optional string checkout_id = 3;
+  optional int64 cart_id = 4;
+  optional string request_hash = 5;
 }
 
 message CreateOrderItem {

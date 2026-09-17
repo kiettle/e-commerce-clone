@@ -11,6 +11,7 @@ import { OrderCreationFailedError } from '../../domain/errors/order-creation-fai
 import {
   OrderCreateItem,
   OrderCreateResult,
+  OrderCheckoutIdentity,
   OrderCreatorPort,
 } from '../../application/ports/order-creator.port';
 
@@ -20,6 +21,9 @@ interface CloseableClientGrpc extends ClientGrpc {
 
 interface CreateOrderGrpcRequest {
   user_id: string;
+  checkout_id?: string;
+  cart_id?: string;
+  request_hash?: string;
   items: Array<{
     product_sku_id: string;
     product_name: string;
@@ -62,10 +66,13 @@ export class OrderGrpcCreatorClient
   async createOrder(
     userId: bigint,
     items: OrderCreateItem[],
+    checkoutIdentity?: OrderCheckoutIdentity,
   ): Promise<OrderCreateResult> {
     try {
       const response = await firstValueFrom(
-        this.getOrderService().createOrder(toGrpcRequest(userId, items)),
+        this.getOrderService().createOrder(
+          toGrpcRequest(userId, items, checkoutIdentity),
+        ),
       );
       const orderId = BigInt(response.order_id);
 
@@ -118,9 +125,17 @@ export class OrderGrpcCreatorClient
 function toGrpcRequest(
   userId: bigint,
   items: OrderCreateItem[],
+  checkoutIdentity?: OrderCheckoutIdentity,
 ): CreateOrderGrpcRequest {
   return {
     user_id: userId.toString(),
+    ...(checkoutIdentity
+      ? {
+          checkout_id: checkoutIdentity.checkoutId,
+          cart_id: checkoutIdentity.cartId.toString(),
+          request_hash: checkoutIdentity.requestHash,
+        }
+      : {}),
     items: items.map((item) => ({
       product_sku_id: item.productSkuId.toString(),
       product_name: item.productName,

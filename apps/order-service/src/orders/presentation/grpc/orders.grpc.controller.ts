@@ -5,6 +5,9 @@ import { OrderOperationError } from '../../domain/errors/order-operation.error';
 
 interface CreateOrderGrpcRequest {
   user_id: string;
+  checkout_id?: string;
+  cart_id?: string;
+  request_hash?: string;
   items: Array<{
     product_sku_id: string;
     product_name: string;
@@ -33,13 +36,16 @@ export class OrdersGrpcController {
     try {
       const order = await this.createOrderUseCase.execute({
         userId: BigInt(request.user_id),
+        checkoutId: request.checkout_id,
+        cartId: request.cart_id ? BigInt(request.cart_id) : undefined,
+        requestHash: request.request_hash,
         items: request.items.map((item) => ({
           productSkuId: BigInt(item.product_sku_id),
           productName: item.product_name,
           price: item.price,
           quantity: item.quantity,
           skuCode: item.sku_code,
-          imageUrl: item.image_url,
+          imageUrl: item.image_url || null,
         })),
       });
 

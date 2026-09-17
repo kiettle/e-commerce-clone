@@ -14,6 +14,16 @@ export interface OrderCreateResult {
   status: string;
 }
 
+export interface OrderCheckoutIdentity {
+  checkoutId: string;
+  cartId: bigint;
+  requestHash: string;
+}
+
 export interface OrderCreatorPort {
-  createOrder(userId: bigint, items: OrderCreateItem[]): Promise<OrderCreateResult>;
+  createOrder(
+    userId: bigint,
+    items: OrderCreateItem[],
+    checkoutIdentity?: OrderCheckoutIdentity,
+  ): Promise<OrderCreateResult>;
 }

@@ -24,6 +24,9 @@ enum PaymentStatus {
 model Order {
   id              BigInt        @id @default(autoincrement())
   userId          BigInt        @map("user_id")
+  checkoutId      String?       @unique @map("checkout_id") @db.Uuid
+  cartId          BigInt?       @map("cart_id")
+  requestHash     String?       @map("request_hash") @db.Char(64)
   totalAmount     Decimal       @map("total_amount") @db.Decimal(10, 2)
   status          OrderStatus   @default(CREATED)
   paymentStatus   PaymentStatus @default(PENDING) @map("payment_status")
@@ -33,6 +36,7 @@ model Order {
   items           OrderItem[]
 
   @@index([userId])
+  @@index([cartId])
   @@index([status])
   @@map("orders")
 }

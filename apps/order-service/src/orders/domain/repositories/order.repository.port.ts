@@ -15,6 +15,9 @@ export interface OrderItemCreateData {
 
 export interface OrderCreateData {
   userId: bigint;
+  checkoutId?: string;
+  cartId?: bigint;
+  requestHash?: string;
   totalAmount: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;

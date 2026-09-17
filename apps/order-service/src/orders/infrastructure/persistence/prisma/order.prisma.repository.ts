@@ -25,6 +25,9 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
     const order = await this.prisma.order.create({
       data: {
         userId: data.userId,
+        checkoutId: data.checkoutId,
+        cartId: data.cartId,
+        requestHash: data.requestHash,
         totalAmount: data.totalAmount,
         status: data.status,
         paymentStatus: data.paymentStatus,
@@ -52,6 +55,9 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
     return new OrderEntity({
       id: order.id,
       userId: order.userId,
+      checkoutId: order.checkoutId,
+      cartId: order.cartId,
+      requestHash: order.requestHash,
       totalAmount: Number(order.totalAmount),
       status: order.status as OrderStatus,
       paymentStatus: order.paymentStatus as PaymentStatus,

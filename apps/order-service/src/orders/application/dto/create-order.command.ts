@@ -9,6 +9,9 @@ export interface CreateOrderItemCommand {
 
 export interface CreateOrderCommand {
   userId: bigint;
+  checkoutId?: string | null;
+  cartId?: bigint | null;
+  requestHash?: string | null;
   shippingAddress?: string | null;
   items: CreateOrderItemCommand[];
 }

@@ -8,6 +8,12 @@ import { CreateOrderCommand, CreateOrderItemCommand } from '../dto/create-order.
 import { CreateOrderUseCase } from './create-order.use-case';
 
 describe('CreateOrderUseCase', () => {
+  const checkoutIdentity = {
+    checkoutId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    cartId: 55n,
+    requestHash:
+      '2a13c413324eeb88998d07a089827de9e41962dbd347308d8ed483adf33189c7',
+  };
   const validItem: CreateOrderItemCommand = {
     productName: 'Keyboard',
     productSkuId: 101n,
@@ -143,5 +149,82 @@ describe('CreateOrderUseCase', () => {
       ],
     });
     expect(result).toBe(persistedOrder);
+  });
+
+  it('persists a valid checkout identity after verifying its request hash', async () => {
+    const persistedOrder = new OrderEntity({
+      id: 9001n,
+      userId: 7n,
+      ...checkoutIdentity,
+      totalAmount: 19.99,
+      status: OrderStatus.Created,
+      paymentStatus: PaymentStatus.Pending,
+    });
+    orders.create.mockResolvedValue(persistedOrder);
+
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        items: [validItem],
+      }),
+    ).resolves.toBe(persistedOrder);
+    expect(orders.create).toHaveBeenCalledWith(
+      expect.objectContaining(checkoutIdentity),
+    );
+  });
+
+  it('rejects a partial checkout identity', async () => {
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        checkoutId: checkoutIdentity.checkoutId,
+        items: [validItem],
+      }),
+    ).rejects.toBeInstanceOf(InvalidOrderError);
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a checkout identity with a mismatched request hash', async () => {
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        requestHash: '0'.repeat(64),
+        items: [validItem],
+      }),
+    ).rejects.toThrow(
+      'Order request hash does not match its checkout snapshot.',
+    );
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'an invalid checkout UUID',
+      { ...checkoutIdentity, checkoutId: 'not-a-uuid' },
+    ],
+    ['a non-positive cart ID', { ...checkoutIdentity, cartId: 0n }],
+    ['a request hash with the wrong length', { ...checkoutIdentity, requestHash: 'abc' }],
+    [
+      'a request hash containing uppercase hexadecimal',
+      { ...checkoutIdentity, requestHash: 'A'.repeat(64) },
+    ],
+  ])('rejects checkout identity with %s', async (_description, identity) => {
+    await expect(
+      useCase.execute({ userId: 7n, ...identity, items: [validItem] }),
+    ).rejects.toBeInstanceOf(InvalidOrderError);
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('requires an SKU code for an identified checkout order', async () => {
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        items: [{ ...validItem, skuCode: null }],
+      }),
+    ).rejects.toBeInstanceOf(InvalidOrderError);
+    expect(orders.create).not.toHaveBeenCalled();
   });
 });
