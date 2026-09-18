@@ -39,9 +39,16 @@ interface CreateOrderGrpcResponse {
   status: string;
 }
 
+interface GetOrderByCheckoutIdGrpcRequest {
+  checkout_id: string;
+}
+
 interface OrderGrpcService {
   createOrder(
     request: CreateOrderGrpcRequest,
+  ): Observable<CreateOrderGrpcResponse>;
+  getOrderByCheckoutId(
+    request: GetOrderByCheckoutIdGrpcRequest,
   ): Observable<CreateOrderGrpcResponse>;
 }
 
@@ -92,6 +99,34 @@ export class OrderGrpcCreatorClient
       }
 
       throw new OrderCreationFailedError('Order service request failed.');
+    }
+  }
+
+  async getOrderByCheckoutId(
+    checkoutId: string,
+  ): Promise<OrderCreateResult> {
+    try {
+      const response = await firstValueFrom(
+        this.getOrderService().getOrderByCheckoutId({
+          checkout_id: checkoutId,
+        }),
+      );
+      const orderId = BigInt(response.order_id);
+
+      if (!response.status || orderId <= 0n) {
+        throw new OrderCreationFailedError('Order lookup returned invalid data.');
+      }
+
+      return {
+        orderId,
+        status: response.status,
+      };
+    } catch (error) {
+      if (error instanceof OrderCreationFailedError) {
+        throw error;
+      }
+
+      throw new OrderCreationFailedError('Order service lookup failed.');
     }
   }
 

@@ -27,4 +27,5 @@ export interface OrderCreateData {
 
 export interface OrderRepositoryPort {
   create(data: OrderCreateData): Promise<OrderEntity>;
+  findByCheckoutId(checkoutId: string): Promise<OrderEntity | null>;
 }

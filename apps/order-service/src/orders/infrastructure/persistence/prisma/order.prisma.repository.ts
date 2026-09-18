@@ -51,6 +51,15 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
     return this.toDomain(order);
   }
 
+  async findByCheckoutId(checkoutId: string): Promise<OrderEntity | null> {
+    const order = await this.prisma.order.findUnique({
+      where: { checkoutId },
+      include: { items: true },
+    });
+
+    return order ? this.toDomain(order) : null;
+  }
+
   private toDomain(order: PrismaOrderWithItems): OrderEntity {
     return new OrderEntity({
       id: order.id,

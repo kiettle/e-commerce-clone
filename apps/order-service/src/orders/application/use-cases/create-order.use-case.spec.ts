@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi, type Mocked } from 'vitest';
 import { OrderEntity } from '../../domain/entities/order.entity';
 import { OrderStatus } from '../../domain/enums/order-status.enum';
 import { PaymentStatus } from '../../domain/enums/payment-status.enum';
+import { CheckoutIdConflictError } from '../../domain/errors/checkout-id-conflict.error';
 import { InvalidOrderError } from '../../domain/errors/invalid-order.error';
+import { InvalidOrderStateError } from '../../domain/errors/invalid-order-state.error';
 import { OrderRepositoryPort } from '../../domain/repositories/order.repository.port';
 import { CreateOrderCommand, CreateOrderItemCommand } from '../dto/create-order.command';
 import { CreateOrderUseCase } from './create-order.use-case';
@@ -29,7 +31,9 @@ describe('CreateOrderUseCase', () => {
   beforeEach(() => {
     orders = {
       create: vi.fn(),
+      findByCheckoutId: vi.fn(),
     };
+    orders.findByCheckoutId.mockResolvedValue(null);
     useCase = new CreateOrderUseCase(orders);
   });
 
@@ -172,6 +176,118 @@ describe('CreateOrderUseCase', () => {
     expect(orders.create).toHaveBeenCalledWith(
       expect.objectContaining(checkoutIdentity),
     );
+  });
+
+  it('returns the existing order when the checkout ID and hash match', async () => {
+    const existingOrder = new OrderEntity({
+      id: 9001n,
+      userId: 7n,
+      ...checkoutIdentity,
+      totalAmount: 19.99,
+      status: OrderStatus.Created,
+      paymentStatus: PaymentStatus.Pending,
+    });
+    orders.findByCheckoutId.mockResolvedValue(existingOrder);
+
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        items: [validItem],
+      }),
+    ).resolves.toBe(existingOrder);
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a checkout ID reused with a different request hash', async () => {
+    orders.findByCheckoutId.mockResolvedValue(
+      new OrderEntity({
+        id: 9001n,
+        userId: 7n,
+        ...checkoutIdentity,
+        requestHash: '0'.repeat(64),
+        totalAmount: 19.99,
+        status: OrderStatus.Created,
+        paymentStatus: PaymentStatus.Pending,
+      }),
+    );
+
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        items: [validItem],
+      }),
+    ).rejects.toBeInstanceOf(CheckoutIdConflictError);
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an existing order with incomplete checkout identity', async () => {
+    orders.findByCheckoutId.mockResolvedValue(
+      new OrderEntity({
+        id: 9001n,
+        userId: 7n,
+        checkoutId: checkoutIdentity.checkoutId,
+        totalAmount: 19.99,
+        status: OrderStatus.Created,
+        paymentStatus: PaymentStatus.Pending,
+      }),
+    );
+
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        items: [validItem],
+      }),
+    ).rejects.toBeInstanceOf(InvalidOrderStateError);
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an existing checkout order in an invalid state', async () => {
+    orders.findByCheckoutId.mockResolvedValue(
+      new OrderEntity({
+        id: 9001n,
+        userId: 7n,
+        ...checkoutIdentity,
+        totalAmount: 19.99,
+        status: OrderStatus.Cancelled,
+        paymentStatus: PaymentStatus.Pending,
+      }),
+    );
+
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        items: [validItem],
+      }),
+    ).rejects.toBeInstanceOf(InvalidOrderStateError);
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('recovers when another request creates the same checkout order concurrently', async () => {
+    const existingOrder = new OrderEntity({
+      id: 9001n,
+      userId: 7n,
+      ...checkoutIdentity,
+      totalAmount: 19.99,
+      status: OrderStatus.Created,
+      paymentStatus: PaymentStatus.Pending,
+    });
+    orders.findByCheckoutId
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(existingOrder);
+    orders.create.mockRejectedValue(new Error('Unique constraint failed.'));
+
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        items: [validItem],
+      }),
+    ).resolves.toBe(existingOrder);
+    expect(orders.findByCheckoutId).toHaveBeenCalledTimes(2);
   });
 
   it('rejects a partial checkout identity', async () => {

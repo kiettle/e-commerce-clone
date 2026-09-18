@@ -71,6 +71,7 @@ describe('CheckoutCartUseCase', () => {
     };
     orders = {
       createOrder: vi.fn(),
+      getOrderByCheckoutId: vi.fn(),
     };
     checkoutFailureLogger = {
       logInventoryReleaseFailure: vi.fn(),

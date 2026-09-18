@@ -1,9 +1,15 @@
 import { OrderEntity } from '../../domain/entities/order.entity';
 import { OrderStatus } from '../../domain/enums/order-status.enum';
 import { PaymentStatus } from '../../domain/enums/payment-status.enum';
+import { CheckoutIdConflictError } from '../../domain/errors/checkout-id-conflict.error';
 import { InvalidOrderError } from '../../domain/errors/invalid-order.error';
+import { InvalidOrderStateError } from '../../domain/errors/invalid-order-state.error';
 import { OrderRepositoryPort } from '../../domain/repositories/order.repository.port';
 import { CreateOrderCommand, CreateOrderItemCommand } from '../dto/create-order.command';
+import {
+  assertValidCheckoutId,
+  assertValidRequestHash,
+} from '../services/checkout-identity.validation';
 import { hashCheckoutRequest } from '../services/checkout-request-hash';
 
 interface CheckoutIdentity {
@@ -11,10 +17,6 @@ interface CheckoutIdentity {
   cartId: bigint;
   requestHash: string;
 }
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SHA_256_PATTERN = /^[0-9a-f]{64}$/;
 
 export class CreateOrderUseCase {
   constructor(private readonly orders: OrderRepositoryPort) {}
@@ -35,6 +37,14 @@ export class CreateOrderUseCase {
           'Order request hash does not match its checkout snapshot.',
         );
       }
+
+      const existingOrder = await this.orders.findByCheckoutId(
+        checkoutIdentity.checkoutId,
+      );
+
+      if (existingOrder) {
+        return resolveExistingCheckoutOrder(existingOrder, checkoutIdentity);
+      }
     }
 
     const items = command.items.map((item) => ({
@@ -46,7 +56,7 @@ export class CreateOrderUseCase {
       quantity: item.quantity,
     }));
 
-    return this.orders.create({
+    const orderData = {
       userId: command.userId,
       ...(checkoutIdentity ?? {}),
       totalAmount: calculateTotalAmount(items),
@@ -54,7 +64,25 @@ export class CreateOrderUseCase {
       paymentStatus: PaymentStatus.Pending,
       shippingAddress: command.shippingAddress,
       items,
-    });
+    };
+
+    try {
+      return await this.orders.create(orderData);
+    } catch (error) {
+      if (!checkoutIdentity) {
+        throw error;
+      }
+
+      const concurrentOrder = await this.orders.findByCheckoutId(
+        checkoutIdentity.checkoutId,
+      );
+
+      if (!concurrentOrder) {
+        throw error;
+      }
+
+      return resolveExistingCheckoutOrder(concurrentOrder, checkoutIdentity);
+    }
   }
 }
 
@@ -76,25 +104,46 @@ function getCheckoutIdentity(
     );
   }
 
-  if (!UUID_PATTERN.test(command.checkoutId)) {
-    throw new InvalidOrderError('Order checkoutId must be a valid UUID.');
-  }
+  assertValidCheckoutId(command.checkoutId);
 
   if (command.cartId <= 0n) {
     throw new InvalidOrderError('Order cartId must be greater than zero.');
   }
 
-  if (!SHA_256_PATTERN.test(command.requestHash)) {
-    throw new InvalidOrderError(
-      'Order requestHash must be a lowercase SHA-256 hash.',
-    );
-  }
+  assertValidRequestHash(command.requestHash);
 
   return {
     checkoutId: command.checkoutId,
     cartId: command.cartId,
     requestHash: command.requestHash,
   };
+}
+
+function resolveExistingCheckoutOrder(
+  order: OrderEntity,
+  identity: CheckoutIdentity,
+): OrderEntity {
+  if (
+    order.checkoutId == null ||
+    order.cartId == null ||
+    order.requestHash == null
+  ) {
+    throw new InvalidOrderStateError(
+      `Order ${order.id} has incomplete checkout identity.`,
+    );
+  }
+
+  if (order.requestHash !== identity.requestHash) {
+    throw new CheckoutIdConflictError(identity.checkoutId);
+  }
+
+  if (order.status === OrderStatus.Cancelled) {
+    throw new InvalidOrderStateError(
+      `Order ${order.id} cannot be reused from status ${order.status}.`,
+    );
+  }
+
+  return order;
 }
 
 function toCheckoutHashItems(items: CreateOrderItemCommand[]) {

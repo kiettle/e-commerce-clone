@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CreateOrderUseCase } from './application/use-cases/create-order.use-case';
+import { GetOrderByCheckoutIdUseCase } from './application/use-cases/get-order-by-checkout-id.use-case';
 import {
   ORDER_REPOSITORY,
   OrderRepositoryPort,
@@ -20,6 +21,12 @@ import { OrdersGrpcController } from './presentation/grpc/orders.grpc.controller
       provide: CreateOrderUseCase,
       useFactory: (orders: OrderRepositoryPort) =>
         new CreateOrderUseCase(orders),
+      inject: [ORDER_REPOSITORY],
+    },
+    {
+      provide: GetOrderByCheckoutIdUseCase,
+      useFactory: (orders: OrderRepositoryPort) =>
+        new GetOrderByCheckoutIdUseCase(orders),
       inject: [ORDER_REPOSITORY],
     },
   ],

@@ -7,14 +7,20 @@ option java_package = "order";
 
 service OrderService {
   rpc CreateOrder (CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrderByCheckoutId (GetOrderByCheckoutIdRequest)
+      returns (CreateOrderResponse);
 }
 
 message CreateOrderRequest {
   int64 user_id = 1;
   repeated CreateOrderItem items = 2;
-  optional string checkout_id = 3;
-  optional int64 cart_id = 4;
-  optional string request_hash = 5;
+  string checkout_id = 3;
+  int64 cart_id = 4;
+  string request_hash = 5;
+}
+
+message GetOrderByCheckoutIdRequest {
+  string checkout_id = 1;
 }
 
 message CreateOrderItem {
@@ -28,5 +34,5 @@ message CreateOrderItem {
 
 message CreateOrderResponse {
   int64 order_id = 1;
-  string status = 2; // CREATED, FAILED, etc.
+  string status = 2;
 }

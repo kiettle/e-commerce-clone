@@ -26,4 +26,5 @@ export interface OrderCreatorPort {
     items: OrderCreateItem[],
     checkoutIdentity?: OrderCheckoutIdentity,
   ): Promise<OrderCreateResult>;
+  getOrderByCheckoutId(checkoutId: string): Promise<OrderCreateResult>;
 }
