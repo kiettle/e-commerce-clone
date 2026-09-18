@@ -22,10 +22,24 @@ export class CreateOrderUseCase {
   constructor(private readonly orders: OrderRepositoryPort) {}
 
   async execute(command: CreateOrderCommand): Promise<OrderEntity> {
-    assertValidCommand(command);
+    assertValidUserId(command.userId);
     const checkoutIdentity = getCheckoutIdentity(command);
 
     if (checkoutIdentity) {
+      const existingOrder = await this.orders.findByCheckoutId(
+        checkoutIdentity.checkoutId,
+      );
+
+      if (existingOrder) {
+        return resolveExistingCheckoutOrder(
+          existingOrder,
+          checkoutIdentity,
+          command.userId,
+        );
+      }
+
+      assertValidItems(command.items);
+
       const expectedHash = hashCheckoutRequest({
         userId: command.userId,
         cartId: checkoutIdentity.cartId,
@@ -37,14 +51,8 @@ export class CreateOrderUseCase {
           'Order request hash does not match its checkout snapshot.',
         );
       }
-
-      const existingOrder = await this.orders.findByCheckoutId(
-        checkoutIdentity.checkoutId,
-      );
-
-      if (existingOrder) {
-        return resolveExistingCheckoutOrder(existingOrder, checkoutIdentity);
-      }
+    } else {
+      assertValidItems(command.items);
     }
 
     const items = command.items.map((item) => ({
@@ -66,23 +74,7 @@ export class CreateOrderUseCase {
       items,
     };
 
-    try {
-      return await this.orders.create(orderData);
-    } catch (error) {
-      if (!checkoutIdentity) {
-        throw error;
-      }
-
-      const concurrentOrder = await this.orders.findByCheckoutId(
-        checkoutIdentity.checkoutId,
-      );
-
-      if (!concurrentOrder) {
-        throw error;
-      }
-
-      return resolveExistingCheckoutOrder(concurrentOrder, checkoutIdentity);
-    }
+    return this.orders.create(orderData);
   }
 }
 
@@ -122,6 +114,7 @@ function getCheckoutIdentity(
 function resolveExistingCheckoutOrder(
   order: OrderEntity,
   identity: CheckoutIdentity,
+  userId: bigint,
 ): OrderEntity {
   if (
     order.checkoutId == null ||
@@ -133,14 +126,12 @@ function resolveExistingCheckoutOrder(
     );
   }
 
-  if (order.requestHash !== identity.requestHash) {
+  if (
+    order.requestHash !== identity.requestHash ||
+    order.userId !== userId ||
+    order.cartId !== identity.cartId
+  ) {
     throw new CheckoutIdConflictError(identity.checkoutId);
-  }
-
-  if (order.status === OrderStatus.Cancelled) {
-    throw new InvalidOrderStateError(
-      `Order ${order.id} cannot be reused from status ${order.status}.`,
-    );
   }
 
   return order;
@@ -169,16 +160,18 @@ export function calculateTotalAmount(
   return toMoneyAmount(total);
 }
 
-function assertValidCommand(command: CreateOrderCommand): void {
-  if (command.userId <= 0n) {
+function assertValidUserId(userId: bigint): void {
+  if (userId <= 0n) {
     throw new InvalidOrderError('Order userId must be greater than zero.');
   }
+}
 
-  if (command.items.length === 0) {
+function assertValidItems(items: CreateOrderItemCommand[]): void {
+  if (items.length === 0) {
     throw new InvalidOrderError('Order items are required.');
   }
 
-  for (const item of command.items) {
+  for (const item of items) {
     assertValidItem(item);
   }
 }

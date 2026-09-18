@@ -193,7 +193,7 @@ describe('CreateOrderUseCase', () => {
       useCase.execute({
         userId: 7n,
         ...checkoutIdentity,
-        items: [validItem],
+        items: [],
       }),
     ).resolves.toBe(existingOrder);
     expect(orders.create).not.toHaveBeenCalled();
@@ -242,52 +242,6 @@ describe('CreateOrderUseCase', () => {
       }),
     ).rejects.toBeInstanceOf(InvalidOrderStateError);
     expect(orders.create).not.toHaveBeenCalled();
-  });
-
-  it('rejects an existing checkout order in an invalid state', async () => {
-    orders.findByCheckoutId.mockResolvedValue(
-      new OrderEntity({
-        id: 9001n,
-        userId: 7n,
-        ...checkoutIdentity,
-        totalAmount: 19.99,
-        status: OrderStatus.Cancelled,
-        paymentStatus: PaymentStatus.Pending,
-      }),
-    );
-
-    await expect(
-      useCase.execute({
-        userId: 7n,
-        ...checkoutIdentity,
-        items: [validItem],
-      }),
-    ).rejects.toBeInstanceOf(InvalidOrderStateError);
-    expect(orders.create).not.toHaveBeenCalled();
-  });
-
-  it('recovers when another request creates the same checkout order concurrently', async () => {
-    const existingOrder = new OrderEntity({
-      id: 9001n,
-      userId: 7n,
-      ...checkoutIdentity,
-      totalAmount: 19.99,
-      status: OrderStatus.Created,
-      paymentStatus: PaymentStatus.Pending,
-    });
-    orders.findByCheckoutId
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(existingOrder);
-    orders.create.mockRejectedValue(new Error('Unique constraint failed.'));
-
-    await expect(
-      useCase.execute({
-        userId: 7n,
-        ...checkoutIdentity,
-        items: [validItem],
-      }),
-    ).resolves.toBe(existingOrder);
-    expect(orders.findByCheckoutId).toHaveBeenCalledTimes(2);
   });
 
   it('rejects a partial checkout identity', async () => {

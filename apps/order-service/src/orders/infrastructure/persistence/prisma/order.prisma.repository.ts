@@ -7,6 +7,7 @@ import { OrderItemEntity } from '../../../domain/entities/order-item.entity';
 import { OrderEntity } from '../../../domain/entities/order.entity';
 import { OrderStatus } from '../../../domain/enums/order-status.enum';
 import { PaymentStatus } from '../../../domain/enums/payment-status.enum';
+import { CheckoutIdConflictError } from '../../../domain/errors/checkout-id-conflict.error';
 import {
   OrderCreateData,
   OrderRepositoryPort,
@@ -22,33 +23,55 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(data: OrderCreateData): Promise<OrderEntity> {
-    const order = await this.prisma.order.create({
-      data: {
-        userId: data.userId,
-        checkoutId: data.checkoutId,
-        cartId: data.cartId,
-        requestHash: data.requestHash,
-        totalAmount: data.totalAmount,
-        status: data.status,
-        paymentStatus: data.paymentStatus,
-        shippingAddress: data.shippingAddress,
-        items: {
-          create: data.items.map((item) => ({
-            productName: item.productName,
-            productSkuId: item.productSkuId,
-            skuCode: item.skuCode,
-            imageUrl: item.imageUrl,
-            price: item.price,
-            quantity: item.quantity,
-          })),
+    try {
+      const order = await this.prisma.order.create({
+        data: {
+          userId: data.userId,
+          checkoutId: data.checkoutId,
+          cartId: data.cartId,
+          requestHash: data.requestHash,
+          totalAmount: data.totalAmount,
+          status: data.status,
+          paymentStatus: data.paymentStatus,
+          shippingAddress: data.shippingAddress,
+          items: {
+            create: data.items.map((item) => ({
+              productName: item.productName,
+              productSkuId: item.productSkuId,
+              skuCode: item.skuCode,
+              imageUrl: item.imageUrl,
+              price: item.price,
+              quantity: item.quantity,
+            })),
+          },
         },
-      },
-      include: {
-        items: true,
-      },
-    });
+        include: {
+          items: true,
+        },
+      });
 
-    return this.toDomain(order);
+      return this.toDomain(order);
+    } catch (error) {
+      if (!isUniqueConstraintError(error) || !data.checkoutId || !data.requestHash) {
+        throw error;
+      }
+
+      const winningOrder = await this.findByCheckoutId(data.checkoutId);
+
+      if (!winningOrder) {
+        throw error;
+      }
+
+      if (
+        winningOrder.requestHash !== data.requestHash ||
+        winningOrder.userId !== data.userId ||
+        winningOrder.cartId !== data.cartId
+      ) {
+        throw new CheckoutIdConflictError(data.checkoutId);
+      }
+
+      return winningOrder;
+    }
   }
 
   async findByCheckoutId(checkoutId: string): Promise<OrderEntity | null> {
@@ -91,4 +114,13 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
       updatedAt: item.updatedAt,
     });
   }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'P2002'
+  );
 }
