@@ -27,6 +27,11 @@ export interface CheckoutCartResponse {
   cart: CartResponse;
 }
 
+export interface CheckoutPendingResponse {
+  checkoutId: string;
+  status: 'RECONCILIATION_REQUIRED';
+}
+
 export function toCartResponse(cart: CartEntity): CartResponse {
   return {
     id: Number(cart.id),

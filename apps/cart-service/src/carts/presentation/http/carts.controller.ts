@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   Controller,
   Get,
   Headers,
@@ -8,10 +9,13 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Res,
 } from '@nestjs/common';
 import { CheckoutCartUseCase } from '../../application/use-cases/checkout-cart.use-case';
 import { GetActiveCartUseCase } from '../../application/use-cases/get-active-cart.use-case';
 import { CartNotFoundError } from '../../domain/errors/cart-not-found.error';
+import { CheckoutConflictError } from '../../domain/errors/checkout-conflict.error';
+import { CheckoutTerminalError } from '../../domain/errors/checkout-terminal.error';
 import { CartOperationError } from '../../domain/errors/cart-operation.error';
 import { CartItemNotFoundError } from '../../domain/errors/cart-item-not-found.error';
 import { InventoryReservationFailedError } from '../../domain/errors/inventory-reservation-failed.error';
@@ -22,6 +26,7 @@ import { ProductSnapshotUnavailableError } from '../../domain/errors/product-sna
 import {
   CartResponse,
   CheckoutCartResponse,
+  CheckoutPendingResponse,
   toCartResponse,
 } from './cart-response.mapper';
 import { parseUserIdHeader } from './user-id-header';
@@ -47,13 +52,24 @@ export class CartsController {
   @Post(':cartId/checkout')
   async checkoutCart(
     @Headers('x-user-id') userIdHeader: string | undefined,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Param('cartId', ParseIntPipe) cartId: number,
-  ): Promise<CheckoutCartResponse> {
+    @Res({ passthrough: true }) response: { status(code: number): unknown },
+  ): Promise<CheckoutCartResponse | CheckoutPendingResponse> {
     try {
       const result = await this.checkoutCartUseCase.execute({
         userId: parseUserIdHeader(userIdHeader),
         cartId: BigInt(cartId),
+        idempotencyKey: idempotencyKey ?? '',
       });
+
+      if (result.outcome === 'PENDING') {
+        response.status(202);
+        return {
+          checkoutId: result.checkoutId,
+          status: result.status,
+        };
+      }
 
       return {
         orderId: Number(result.orderId),
@@ -72,6 +88,14 @@ export function mapCartError(error: unknown): Error {
     error instanceof ProductSnapshotNotFoundError
   ) {
     return new NotFoundException(error.message);
+  }
+
+  if (error instanceof CheckoutConflictError) {
+    return new ConflictException(error.message);
+  }
+
+  if (error instanceof CheckoutTerminalError) {
+    return new BadRequestException(error.message);
   }
 
   if (

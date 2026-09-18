@@ -24,11 +24,16 @@ import {
   CART_REPOSITORY,
   CartRepositoryPort,
 } from './domain/repositories/cart.repository.port';
+import {
+  CHECKOUT_ATTEMPT_REPOSITORY,
+  CheckoutAttemptRepositoryPort,
+} from './domain/repositories/checkout-attempt.repository.port';
 import { InventoryGrpcStockClient } from './infrastructure/grpc/inventory-grpc-stock.client';
 import { OrderGrpcCreatorClient } from './infrastructure/grpc/order-grpc-creator.client';
 import { ProductHttpCatalogClient } from './infrastructure/http/product-http-catalog.client';
 import { NestCheckoutFailureLogger } from './infrastructure/logging/nest-checkout-failure.logger';
 import { PrismaCartRepository } from './infrastructure/persistence/prisma/cart.prisma.repository';
+import { PrismaCheckoutAttemptRepository } from './infrastructure/persistence/prisma/checkout-attempt.prisma.repository';
 import { PrismaService } from './infrastructure/persistence/prisma/prisma.service';
 import { CartItemsController } from './presentation/http/cart-items.controller';
 import { CartsController } from './presentation/http/carts.controller';
@@ -40,6 +45,10 @@ import { CartsController } from './presentation/http/carts.controller';
     {
       provide: CART_REPOSITORY,
       useClass: PrismaCartRepository,
+    },
+    {
+      provide: CHECKOUT_ATTEMPT_REPOSITORY,
+      useClass: PrismaCheckoutAttemptRepository,
     },
     {
       provide: PRODUCT_CATALOG,
@@ -87,18 +96,21 @@ import { CartsController } from './presentation/http/carts.controller';
       provide: CheckoutCartUseCase,
       useFactory: (
         carts: CartRepositoryPort,
+        attempts: CheckoutAttemptRepositoryPort,
         inventory: InventoryStockPort,
         orders: OrderCreatorPort,
         checkoutFailureLogger: CheckoutFailureLoggerPort,
       ) =>
         new CheckoutCartUseCase(
           carts,
+          attempts,
           inventory,
           orders,
           checkoutFailureLogger,
         ),
       inject: [
         CART_REPOSITORY,
+        CHECKOUT_ATTEMPT_REPOSITORY,
         INVENTORY_STOCK,
         ORDER_CREATOR,
         CHECKOUT_FAILURE_LOGGER,

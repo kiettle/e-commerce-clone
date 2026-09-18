@@ -87,3 +87,10 @@ export class CheckoutCartResponseDto {
   cart!: CartResponseDto;
 }
 
+export class CheckoutPendingResponseDto {
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
+  checkoutId!: string;
+
+  @ApiProperty({ example: 'RECONCILIATION_REQUIRED' })
+  status!: string;
+}

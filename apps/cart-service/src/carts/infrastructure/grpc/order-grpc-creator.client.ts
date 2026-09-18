@@ -1,4 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { status as GrpcStatus } from '@grpc/grpc-js';
 import { ConfigService } from '@nestjs/config';
 import {
   ClientGrpc,
@@ -86,6 +87,7 @@ export class OrderGrpcCreatorClient
       if (response.status !== 'CREATED' || orderId <= 0n) {
         throw new OrderCreationFailedError(
           response.status || 'Order creation failed.',
+          'UNCERTAIN',
         );
       }
 
@@ -98,7 +100,10 @@ export class OrderGrpcCreatorClient
         throw error;
       }
 
-      throw new OrderCreationFailedError('Order service request failed.');
+      throw new OrderCreationFailedError(
+        grpcErrorMessage(error, 'Order service request failed.'),
+        isDefiniteOrderError(error) ? 'DEFINITE' : 'UNCERTAIN',
+      );
     }
   }
 
@@ -114,7 +119,10 @@ export class OrderGrpcCreatorClient
       const orderId = BigInt(response.order_id);
 
       if (!response.status || orderId <= 0n) {
-        throw new OrderCreationFailedError('Order lookup returned invalid data.');
+        throw new OrderCreationFailedError(
+          'Order lookup returned invalid data.',
+          'UNCERTAIN',
+        );
       }
 
       return {
@@ -126,7 +134,17 @@ export class OrderGrpcCreatorClient
         throw error;
       }
 
-      throw new OrderCreationFailedError('Order service lookup failed.');
+      if (grpcErrorCode(error) === GrpcStatus.NOT_FOUND) {
+        throw new OrderCreationFailedError(
+          grpcErrorMessage(error, 'Order was not found.'),
+          'NOT_FOUND',
+        );
+      }
+
+      throw new OrderCreationFailedError(
+        grpcErrorMessage(error, 'Order service lookup failed.'),
+        isDefiniteOrderError(error) ? 'DEFINITE' : 'UNCERTAIN',
+      );
     }
   }
 
@@ -150,11 +168,40 @@ export class OrderGrpcCreatorClient
     if (!this.orderService) {
       throw new OrderCreationFailedError(
         'Order gRPC client is not initialized.',
+        'UNCERTAIN',
       );
     }
 
     return this.orderService;
   }
+}
+
+function grpcErrorCode(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return undefined;
+  }
+
+  return typeof error.code === 'number' ? error.code : undefined;
+}
+
+function grpcErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error !== 'object' || error === null) {
+    return fallback;
+  }
+
+  if ('details' in error && typeof error.details === 'string') {
+    return error.details;
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
+function isDefiniteOrderError(error: unknown): boolean {
+  return [
+    GrpcStatus.INVALID_ARGUMENT,
+    GrpcStatus.ALREADY_EXISTS,
+    GrpcStatus.FAILED_PRECONDITION,
+  ].includes(grpcErrorCode(error) ?? -1);
 }
 
 function toGrpcRequest(

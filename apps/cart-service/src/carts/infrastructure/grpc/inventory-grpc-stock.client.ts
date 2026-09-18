@@ -80,6 +80,7 @@ export class InventoryGrpcStockClient
 
       throw new InventoryReservationFailedError(
         'Inventory service request failed.',
+        'UNCERTAIN',
       );
     }
   }
@@ -103,7 +104,10 @@ export class InventoryGrpcStockClient
         throw error;
       }
 
-      throw new InventoryReleaseFailedError('Inventory service request failed.');
+      throw new InventoryReleaseFailedError(
+        'Inventory service request failed.',
+        'UNCERTAIN',
+      );
     }
   }
 
@@ -128,6 +132,7 @@ export class InventoryGrpcStockClient
     if (!this.inventoryService) {
       throw new InventoryReservationFailedError(
         'Inventory gRPC client is not initialized.',
+        'UNCERTAIN',
       );
     }
 

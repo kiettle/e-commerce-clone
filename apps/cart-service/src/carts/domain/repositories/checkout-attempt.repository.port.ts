@@ -1,0 +1,35 @@
+import { CartEntity } from '../entities/cart.entity';
+import { CheckoutAttemptEntity } from '../entities/checkout-attempt.entity';
+import { ReconciliationAction } from '../enums/reconciliation-action.enum';
+
+export const CHECKOUT_ATTEMPT_REPOSITORY = Symbol(
+  'CHECKOUT_ATTEMPT_REPOSITORY',
+);
+
+export interface CheckoutAttemptRepositoryPort {
+  findByUserAndKey(
+    userId: bigint,
+    idempotencyKey: string,
+  ): Promise<CheckoutAttemptEntity | null>;
+  startOrLoad(
+    userId: bigint,
+    cartId: bigint,
+    idempotencyKey: string,
+  ): Promise<CheckoutAttemptEntity>;
+  markStockReserved(attemptId: string): Promise<CheckoutAttemptEntity>;
+  markOrderConfirmed(
+    attemptId: string,
+    orderId: bigint,
+  ): Promise<CheckoutAttemptEntity>;
+  markCompensating(
+    attemptId: string,
+    error: string,
+  ): Promise<CheckoutAttemptEntity>;
+  markReconciliationRequired(
+    attemptId: string,
+    action: ReconciliationAction,
+    error: string,
+  ): Promise<void>;
+  complete(attemptId: string, orderId: bigint): Promise<CartEntity>;
+  failAndAbandon(attemptId: string, error: string): Promise<void>;
+}

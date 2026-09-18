@@ -5,6 +5,7 @@ import {
   AddCartItemRequestDto,
   CartResponseDto,
   CheckoutCartResponseDto,
+  CheckoutPendingResponseDto,
   UpdateCartItemRequestDto,
 } from '../../presentation/http/dto/cart.dto';
 
@@ -28,13 +29,19 @@ export class CartGatewayClient {
   checkoutCart(
     userId: number,
     cartId: number,
-  ): Promise<CheckoutCartResponseDto> {
-    return this.httpClient.request<CheckoutCartResponseDto>({
+    idempotencyKey: string,
+  ): Promise<CheckoutCartResponseDto | CheckoutPendingResponseDto> {
+    return this.httpClient.request<
+      CheckoutCartResponseDto | CheckoutPendingResponseDto
+    >({
       serviceName: 'cart-service',
       baseUrl: this.getCartServiceUrl(),
       path: `/api/carts/${cartId}/checkout`,
       method: 'POST',
-      headers: this.buildUserHeaders(userId),
+      headers: {
+        ...this.buildUserHeaders(userId),
+        'Idempotency-Key': idempotencyKey,
+      },
     });
   }
 
@@ -93,4 +100,3 @@ export class CartGatewayClient {
     return `http://localhost:${port}`;
   }
 }
-
