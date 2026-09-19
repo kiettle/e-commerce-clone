@@ -76,6 +76,8 @@ export class CartsController {
       }
 
       return {
+        checkoutId: result.checkoutId,
+        status: result.status,
         orderId: Number(result.orderId),
         cart: toCartResponse(result.cart),
       };

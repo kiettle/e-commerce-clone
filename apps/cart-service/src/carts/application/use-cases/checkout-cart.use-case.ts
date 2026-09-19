@@ -239,6 +239,8 @@ export class CheckoutCartUseCase {
       const cart = await this.attempts.complete(attempt.id, attempt.orderId);
       return {
         outcome: 'COMPLETED',
+        checkoutId: attempt.id,
+        status: 'COMPLETED',
         cart,
         orderId: attempt.orderId,
       };
@@ -299,6 +301,8 @@ export class CheckoutCartUseCase {
 
     return {
       outcome: 'COMPLETED',
+      checkoutId: attempt.id,
+      status: 'COMPLETED',
       cart,
       orderId: attempt.orderId,
     };

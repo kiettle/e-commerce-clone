@@ -2,6 +2,8 @@ import { CartEntity } from '../../domain/entities/cart.entity';
 
 export interface CompletedCheckoutResult {
   outcome: 'COMPLETED';
+  checkoutId: string;
+  status: 'COMPLETED';
   cart: CartEntity;
   orderId: bigint;
 }

@@ -82,7 +82,7 @@ export class CartsGatewayController {
       idempotencyKey,
     );
 
-    if ('checkoutId' in result) {
+    if (result.status === 'RECONCILIATION_REQUIRED') {
       response.status(202);
     }
 

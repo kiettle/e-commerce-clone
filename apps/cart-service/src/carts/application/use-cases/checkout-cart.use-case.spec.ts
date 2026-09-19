@@ -108,6 +108,8 @@ describe('CheckoutCartUseCase', () => {
 
     await expect(useCase.execute(command)).resolves.toEqual({
       outcome: 'COMPLETED',
+      checkoutId,
+      status: 'COMPLETED',
       cart: checkedOutCart,
       orderId: 501n,
     });
@@ -144,6 +146,8 @@ describe('CheckoutCartUseCase', () => {
 
     await expect(useCase.execute(command)).resolves.toEqual({
       outcome: 'COMPLETED',
+      checkoutId,
+      status: 'COMPLETED',
       cart: checkedOutCart,
       orderId: 501n,
     });

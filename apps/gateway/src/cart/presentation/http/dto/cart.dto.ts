@@ -90,6 +90,12 @@ export class CartResponseDto {
 }
 
 export class CheckoutCartResponseDto {
+  @ApiProperty({ example: '018f47a1-7b72-4c7f-8c52-f06612de3377' })
+  checkoutId!: string;
+
+  @ApiProperty({ example: GatewayCheckoutStatus.Completed })
+  status!: 'COMPLETED';
+
   @ApiProperty({ example: 1 })
   orderId!: number;
 

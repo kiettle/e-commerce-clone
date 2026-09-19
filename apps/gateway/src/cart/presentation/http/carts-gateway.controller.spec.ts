@@ -32,6 +32,8 @@ describe('CartsGatewayController checkout', () => {
 
   it('forwards a valid caller-provided key unchanged', async () => {
     client.checkoutCart.mockResolvedValue({
+      checkoutId: '018f47a1-7b72-4c7f-8c52-f06612de3377',
+      status: 'COMPLETED',
       orderId: 501,
       cart: {
         id: 20,

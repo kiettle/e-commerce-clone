@@ -25,6 +25,8 @@ export interface CartResponse {
 }
 
 export interface CheckoutCartResponse {
+  checkoutId: string;
+  status: 'COMPLETED';
   orderId: number;
   cart: CartResponse;
 }

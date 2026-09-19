@@ -57,6 +57,7 @@ describe('OrdersGrpcController', () => {
   });
 
   afterEach(() => {
+    delete process.env.ORDER_DEMO_LOST_RESPONSE_AFTER;
     vi.restoreAllMocks();
   });
 
@@ -67,6 +68,21 @@ describe('OrdersGrpcController', () => {
       order_id: '12',
       status: OrderStatus.Created,
     });
+  });
+
+  it('can simulate a lost create response after persisting the order', async () => {
+    process.env.ORDER_DEMO_LOST_RESPONSE_AFTER = '0';
+    createOrder.mockResolvedValue(order);
+    const faultController = new OrdersGrpcController(
+      { execute: createOrder } as unknown as CreateOrderUseCase,
+      { execute: getOrderByCheckoutId } as unknown as GetOrderByCheckoutIdUseCase,
+    );
+
+    await expectRpcCode(
+      faultController.createOrder(createRequest),
+      GrpcStatus.UNAVAILABLE,
+    );
+    expect(createOrder).toHaveBeenCalledTimes(1);
   });
 
   it('returns a structured lookup result', async () => {

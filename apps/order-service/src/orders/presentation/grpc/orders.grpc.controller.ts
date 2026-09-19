@@ -3,6 +3,7 @@ import { status as GrpcStatus } from '@grpc/grpc-js';
 import { GrpcMethod, RpcException } from '@nestjs/microservices';
 import { CreateOrderUseCase } from '../../application/use-cases/create-order.use-case';
 import { GetOrderByCheckoutIdUseCase } from '../../application/use-cases/get-order-by-checkout-id.use-case';
+import { OrderEntity } from '../../domain/entities/order.entity';
 import { CheckoutIdConflictError } from '../../domain/errors/checkout-id-conflict.error';
 import { InvalidOrderError } from '../../domain/errors/invalid-order.error';
 import { InvalidOrderStateError } from '../../domain/errors/invalid-order-state.error';
@@ -35,6 +36,7 @@ interface GetOrderByCheckoutIdGrpcRequest {
 @Controller()
 export class OrdersGrpcController {
   private readonly logger = new Logger(OrdersGrpcController.name);
+  private readonly lostCreateResponseFault = new DemoLostCreateResponseFault();
 
   constructor(
     private readonly createOrderUseCase: CreateOrderUseCase,
@@ -45,8 +47,10 @@ export class OrdersGrpcController {
   async createOrder(
     request: CreateOrderGrpcRequest,
   ): Promise<CreateOrderGrpcResponse> {
+    let order: OrderEntity;
+
     try {
-      const order = await this.createOrderUseCase.execute({
+      order = await this.createOrderUseCase.execute({
         userId: BigInt(request.user_id),
         checkoutId: request.checkout_id,
         cartId: request.cart_id ? BigInt(request.cart_id) : undefined,
@@ -61,10 +65,18 @@ export class OrdersGrpcController {
         })),
       });
 
-      return toGrpcResponse(order);
     } catch (error) {
       throw this.toRpcException(error);
     }
+
+    if (this.lostCreateResponseFault.shouldFail()) {
+      throw createRpcException(
+        GrpcStatus.UNAVAILABLE,
+        'Demo fault: order was created but its response was lost.',
+      );
+    }
+
+    return toGrpcResponse(order);
   }
 
   @GrpcMethod('OrderService', 'GetOrderByCheckoutId')
@@ -104,6 +116,39 @@ export class OrdersGrpcController {
       GrpcStatus.UNAVAILABLE,
       'Order service is unavailable.',
     );
+  }
+}
+
+class DemoLostCreateResponseFault {
+  private readonly failAfterSuccessfulResponses: number | null;
+  private successfulResponses = 0;
+  private triggered = false;
+
+  constructor() {
+    const configuredValue = process.env.ORDER_DEMO_LOST_RESPONSE_AFTER;
+    const parsedValue = Number(configuredValue);
+
+    this.failAfterSuccessfulResponses =
+      process.env.NODE_ENV !== 'production' &&
+      configuredValue != null &&
+      Number.isInteger(parsedValue) &&
+      parsedValue >= 0
+        ? parsedValue
+        : null;
+  }
+
+  shouldFail(): boolean {
+    if (this.failAfterSuccessfulResponses == null || this.triggered) {
+      return false;
+    }
+
+    if (this.successfulResponses < this.failAfterSuccessfulResponses) {
+      this.successfulResponses += 1;
+      return false;
+    }
+
+    this.triggered = true;
+    return true;
   }
 }
 
