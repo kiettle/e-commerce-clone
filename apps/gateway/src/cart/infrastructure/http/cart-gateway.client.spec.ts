@@ -32,4 +32,18 @@ describe('CartGatewayClient checkout', () => {
       },
     });
   });
+
+  it('forwards checkout status lookup with the authenticated user', async () => {
+    const checkoutId = '018f47a1-7b72-4c7f-8c52-f06612de3377';
+
+    await client.getCheckoutStatus(10, checkoutId);
+
+    expect(httpClient.request).toHaveBeenCalledWith({
+      serviceName: 'cart-service',
+      baseUrl: 'http://cart-service:4002',
+      path: `/api/checkouts/${checkoutId}`,
+      method: 'GET',
+      headers: { 'x-user-id': '10' },
+    });
+  });
 });

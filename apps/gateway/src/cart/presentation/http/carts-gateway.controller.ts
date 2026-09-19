@@ -3,6 +3,8 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Post,
@@ -15,7 +17,6 @@ import {
   ApiAcceptedResponse,
   ApiBearerAuth,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -52,6 +53,7 @@ export class CartsGatewayController {
   }
 
   @Post(':cartId/checkout')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Checkout the authenticated user cart' })
   @ApiParam({ name: 'cartId', example: 1, type: Number })
   @ApiHeader({
@@ -60,7 +62,7 @@ export class CartsGatewayController {
     description: 'A caller-generated UUID v4 reused for checkout retries.',
     example: '550e8400-e29b-41d4-a716-446655440000',
   })
-  @ApiCreatedResponse({ type: CheckoutCartResponseDto })
+  @ApiOkResponse({ type: CheckoutCartResponseDto })
   @ApiAcceptedResponse({ type: CheckoutPendingResponseDto })
   @ApiConflictResponse({ description: 'Checkout key or cart is already in use.' })
   @ApiBadRequestResponse({ description: 'Invalid cart checkout request.' })

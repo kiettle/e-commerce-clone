@@ -28,6 +28,14 @@ export class PrismaCheckoutAttemptRepository
 {
   constructor(private readonly prisma: PrismaService) {}
 
+  async findById(checkoutId: string): Promise<CheckoutAttemptEntity | null> {
+    const attempt = await this.prisma.checkoutAttempt.findUnique({
+      where: { id: checkoutId },
+    });
+
+    return attempt ? toDomain(attempt) : null;
+  }
+
   async findByUserAndKey(
     userId: bigint,
     idempotencyKey: string,

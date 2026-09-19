@@ -19,6 +19,7 @@ import { AddCartItemUseCase } from './application/use-cases/add-cart-item.use-ca
 import { CheckoutCartUseCase } from './application/use-cases/checkout-cart.use-case';
 import { DeleteCartItemUseCase } from './application/use-cases/delete-cart-item.use-case';
 import { GetActiveCartUseCase } from './application/use-cases/get-active-cart.use-case';
+import { GetCheckoutStatusUseCase } from './application/use-cases/get-checkout-status.use-case';
 import { UpdateCartItemUseCase } from './application/use-cases/update-cart-item.use-case';
 import {
   CART_REPOSITORY,
@@ -37,9 +38,10 @@ import { PrismaCheckoutAttemptRepository } from './infrastructure/persistence/pr
 import { PrismaService } from './infrastructure/persistence/prisma/prisma.service';
 import { CartItemsController } from './presentation/http/cart-items.controller';
 import { CartsController } from './presentation/http/carts.controller';
+import { CheckoutsController } from './presentation/http/checkouts.controller';
 
 @Module({
-  controllers: [CartsController, CartItemsController],
+  controllers: [CartsController, CartItemsController, CheckoutsController],
   providers: [
     PrismaService,
     {
@@ -91,6 +93,12 @@ import { CartsController } from './presentation/http/carts.controller';
       useFactory: (carts: CartRepositoryPort) =>
         new DeleteCartItemUseCase(carts),
       inject: [CART_REPOSITORY],
+    },
+    {
+      provide: GetCheckoutStatusUseCase,
+      useFactory: (attempts: CheckoutAttemptRepositoryPort) =>
+        new GetCheckoutStatusUseCase(attempts),
+      inject: [CHECKOUT_ATTEMPT_REPOSITORY],
     },
     {
       provide: CheckoutCartUseCase,

@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { beforeEach, describe, expect, it, vi, type Mocked } from 'vitest';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
 import { CartGatewayClient } from '../../infrastructure/http/cart-gateway.client';
@@ -18,6 +19,15 @@ describe('CartsGatewayController checkout', () => {
     } as unknown as Mocked<CartGatewayClient>;
     response = { status: vi.fn() };
     controller = new CartsGatewayController(client);
+  });
+
+  it('declares successful checkout as HTTP 200', () => {
+    expect(
+      Reflect.getMetadata(
+        HTTP_CODE_METADATA,
+        CartsGatewayController.prototype.checkoutCart,
+      ),
+    ).toBe(200);
   });
 
   it('forwards a valid caller-provided key unchanged', async () => {

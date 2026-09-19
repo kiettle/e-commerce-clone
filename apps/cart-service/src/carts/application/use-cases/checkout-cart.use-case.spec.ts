@@ -60,6 +60,7 @@ describe('CheckoutCartUseCase', () => {
       markCheckedOut: vi.fn(),
     };
     attempts = {
+      findById: vi.fn(),
       findByUserAndKey: vi.fn(),
       startOrLoad: vi.fn(),
       markStockReserved: vi.fn(),

@@ -5,6 +5,8 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   NotFoundException,
   Param,
   ParseIntPipe,
@@ -15,6 +17,7 @@ import { CheckoutCartUseCase } from '../../application/use-cases/checkout-cart.u
 import { GetActiveCartUseCase } from '../../application/use-cases/get-active-cart.use-case';
 import { CartNotFoundError } from '../../domain/errors/cart-not-found.error';
 import { CheckoutConflictError } from '../../domain/errors/checkout-conflict.error';
+import { CheckoutNotFoundError } from '../../domain/errors/checkout-not-found.error';
 import { CheckoutTerminalError } from '../../domain/errors/checkout-terminal.error';
 import { CartOperationError } from '../../domain/errors/cart-operation.error';
 import { CartItemNotFoundError } from '../../domain/errors/cart-item-not-found.error';
@@ -50,6 +53,7 @@ export class CartsController {
   }
 
   @Post(':cartId/checkout')
+  @HttpCode(HttpStatus.OK)
   async checkoutCart(
     @Headers('x-user-id') userIdHeader: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
@@ -85,6 +89,7 @@ export function mapCartError(error: unknown): Error {
   if (
     error instanceof CartNotFoundError ||
     error instanceof CartItemNotFoundError ||
+    error instanceof CheckoutNotFoundError ||
     error instanceof ProductSnapshotNotFoundError
   ) {
     return new NotFoundException(error.message);

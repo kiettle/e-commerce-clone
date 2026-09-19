@@ -7,6 +7,7 @@ export const CHECKOUT_ATTEMPT_REPOSITORY = Symbol(
 );
 
 export interface CheckoutAttemptRepositoryPort {
+  findById(checkoutId: string): Promise<CheckoutAttemptEntity | null>;
   findByUserAndKey(
     userId: bigint,
     idempotencyKey: string,

@@ -6,6 +6,7 @@ import {
   CartResponseDto,
   CheckoutCartResponseDto,
   CheckoutPendingResponseDto,
+  CheckoutStatusResponseDto,
   UpdateCartItemRequestDto,
 } from '../../presentation/http/dto/cart.dto';
 
@@ -21,6 +22,19 @@ export class CartGatewayClient {
       serviceName: 'cart-service',
       baseUrl: this.getCartServiceUrl(),
       path: '/api/carts/me',
+      method: 'GET',
+      headers: this.buildUserHeaders(userId),
+    });
+  }
+
+  getCheckoutStatus(
+    userId: number,
+    checkoutId: string,
+  ): Promise<CheckoutStatusResponseDto> {
+    return this.httpClient.request<CheckoutStatusResponseDto>({
+      serviceName: 'cart-service',
+      baseUrl: this.getCartServiceUrl(),
+      path: `/api/checkouts/${checkoutId}`,
       method: 'GET',
       headers: this.buildUserHeaders(userId),
     });
