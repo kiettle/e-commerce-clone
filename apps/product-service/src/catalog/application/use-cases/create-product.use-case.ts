@@ -1,16 +1,16 @@
 import { ProductEntity } from '../../domain/entities/product.entity';
 import { CategoryNotFoundError } from '../../domain/errors/category-not-found.error';
 import { DuplicateSkuCodeError } from '../../domain/errors/duplicate-sku-code.error';
+import { InvalidSkuCodeError } from '../../domain/errors/invalid-sku-code.error';
+import { InvalidSkuQuantityError } from '../../domain/errors/invalid-sku-quantity.error';
 import { CategoryRepositoryPort } from '../../domain/repositories/category.repository.port';
-import { ProductRepositoryPort } from '../../domain/repositories/product.repository.port';
 import { CreateProductCommand } from '../dto/create-product.command';
-import { ProductEventPublisherPort } from '../ports/product-event-publisher.port';
+import { ProductCreationRepositoryPort } from '../ports/product-creation.repository.port';
 
 export class CreateProductUseCase {
   constructor(
     private readonly categories: CategoryRepositoryPort,
-    private readonly products: ProductRepositoryPort,
-    private readonly productEvents: ProductEventPublisherPort,
+    private readonly products: ProductCreationRepositoryPort,
   ) {}
 
   async execute(command: CreateProductCommand): Promise<ProductEntity> {
@@ -20,49 +20,38 @@ export class CreateProductUseCase {
       throw new CategoryNotFoundError(command.categoryId);
     }
 
-    assertUniqueSkuCodes(command.skus.map((sku) => sku.skuCode));
+    validateSkus(command.skus);
 
-    const product = await this.products.create({
+    return this.products.createWithOutbox({
+      eventId: globalThis.crypto.randomUUID(),
+      occurredAt: new Date(),
       name: command.name,
       description: command.description,
       imageUrl: command.imageUrl,
       categoryId: command.categoryId,
       sellerId: command.sellerId,
       status: command.status,
-      skus: command.skus.map((sku) => ({
-        skuCode: sku.skuCode,
-        price: sku.price,
-        status: sku.status,
-      })),
+      skus: command.skus,
     });
-
-    const quantityBySkuCode = new Map(
-      command.skus.map((sku) => [sku.skuCode, sku.quantity]),
-    );
-
-    await this.productEvents.publishProductCreated({
-      productId: product.id,
-      name: product.name,
-      skus: product.skus.map((sku) => ({
-        productSkuId: sku.id,
-        skuCode: sku.skuCode,
-        status: sku.status,
-        quantity: quantityBySkuCode.get(sku.skuCode) ?? 0,
-      })),
-    });
-
-    return product;
   }
 }
 
-function assertUniqueSkuCodes(skuCodes: string[]): void {
+function validateSkus(skus: CreateProductCommand['skus']): void {
   const seenSkuCodes = new Set<string>();
 
-  for (const skuCode of skuCodes) {
-    if (seenSkuCodes.has(skuCode)) {
-      throw new DuplicateSkuCodeError(skuCode);
+  for (const sku of skus) {
+    if (!sku.skuCode.trim()) {
+      throw new InvalidSkuCodeError();
     }
 
-    seenSkuCodes.add(skuCode);
+    if (seenSkuCodes.has(sku.skuCode)) {
+      throw new DuplicateSkuCodeError(sku.skuCode);
+    }
+
+    if (!Number.isInteger(sku.quantity) || sku.quantity < 0) {
+      throw new InvalidSkuQuantityError(sku.skuCode, sku.quantity);
+    }
+
+    seenSkuCodes.add(sku.skuCode);
   }
 }

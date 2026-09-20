@@ -4,12 +4,15 @@ import {
   Product as PrismaProduct,
   ProductSku as PrismaProductSku,
 } from '../../../../../../../prisma/generated/product';
+import {
+  ProductCreationData,
+  ProductCreationRepositoryPort,
+} from '../../../application/ports/product-creation.repository.port';
 import { ProductEntity } from '../../../domain/entities/product.entity';
 import { ProductSkuEntity } from '../../../domain/entities/product-sku.entity';
 import { ProductSkuStatus } from '../../../domain/enums/product-sku-status.enum';
 import { ProductStatus } from '../../../domain/enums/product-status.enum';
 import {
-  ProductCreateData,
   ProductRepositoryPort,
   ProductSearchFilters,
   ProductUpdateData,
@@ -21,10 +24,12 @@ type PrismaProductWithSkus = PrismaProduct & {
 };
 
 @Injectable()
-export class PrismaProductRepository implements ProductRepositoryPort {
+export class PrismaProductRepository
+  implements ProductRepositoryPort, ProductCreationRepositoryPort
+{
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: ProductCreateData): Promise<ProductEntity> {
+  async createWithOutbox(data: ProductCreationData): Promise<ProductEntity> {
     const product = await this.prisma.$transaction(async (transaction) => {
       const createdProduct = await transaction.product.create({
         data: {
@@ -49,6 +54,29 @@ export class PrismaProductRepository implements ProductRepositoryPort {
           }),
         ),
       );
+
+      const payload = {
+        productId: createdProduct.id.toString(),
+        name: createdProduct.name,
+        skus: skus.map((sku, index) => ({
+          productSkuId: sku.id.toString(),
+          skuCode: sku.skuCode,
+          status: sku.status,
+          quantity: data.skus[index].quantity,
+        })),
+      };
+
+      await transaction.productOutboxEvent.create({
+        data: {
+          id: data.eventId,
+          aggregateId: createdProduct.id,
+          eventType: 'PRODUCT_CREATED',
+          schemaVersion: 1,
+          partitionKey: createdProduct.id.toString(),
+          occurredAt: data.occurredAt,
+          payload,
+        },
+      });
 
       return { ...createdProduct, skus };
     });

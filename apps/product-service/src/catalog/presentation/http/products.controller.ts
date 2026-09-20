@@ -17,11 +17,10 @@ import { SearchProductsUseCase } from '../../application/use-cases/search-produc
 import { UpdateProductUseCase } from '../../application/use-cases/update-product.use-case';
 import { CategoryNotFoundError } from '../../domain/errors/category-not-found.error';
 import { DuplicateSkuCodeError } from '../../domain/errors/duplicate-sku-code.error';
+import { InvalidSkuCodeError } from '../../domain/errors/invalid-sku-code.error';
+import { InvalidSkuQuantityError } from '../../domain/errors/invalid-sku-quantity.error';
 import { ProductNotFoundError } from '../../domain/errors/product-not-found.error';
-import {
-  ProductResponse,
-  toProductResponse,
-} from './catalog-response.mapper';
+import { ProductResponse, toProductResponse } from './catalog-response.mapper';
 import { CreateProductRequestDto } from './dto/create-product-request.dto';
 import { SearchProductsQueryDto } from './dto/search-products-query.dto';
 import { UpdateProductRequestDto } from './dto/update-product-request.dto';
@@ -36,22 +35,17 @@ export class ProductsController {
   ) {}
 
   @Get()
-  async searchProducts(
-    @Query() query: SearchProductsQueryDto,
-  ): Promise<ProductResponse[]> {
+  async searchProducts(@Query() query: SearchProductsQueryDto): Promise<ProductResponse[]> {
     const products = await this.searchProductsUseCase.execute({
       name: query.name,
-      categoryId:
-        query.categoryId === undefined ? undefined : BigInt(query.categoryId),
+      categoryId: query.categoryId === undefined ? undefined : BigInt(query.categoryId),
     });
 
     return products.map(toProductResponse);
   }
 
   @Post()
-  async createProduct(
-    @Body() body: CreateProductRequestDto,
-  ): Promise<ProductResponse> {
+  async createProduct(@Body() body: CreateProductRequestDto): Promise<ProductResponse> {
     try {
       const product = await this.createProductUseCase.execute({
         name: body.name,
@@ -80,8 +74,7 @@ export class ProductsController {
         name: body.name,
         description: body.description,
         imageUrl: body.imageUrl,
-        categoryId:
-          body.categoryId === undefined ? undefined : BigInt(body.categoryId),
+        categoryId: body.categoryId === undefined ? undefined : BigInt(body.categoryId),
         status: body.status,
       });
 
@@ -106,14 +99,15 @@ export class ProductsController {
 }
 
 function mapCatalogError(error: unknown): Error {
-  if (
-    error instanceof CategoryNotFoundError ||
-    error instanceof ProductNotFoundError
-  ) {
+  if (error instanceof CategoryNotFoundError || error instanceof ProductNotFoundError) {
     return new NotFoundException(error.message);
   }
 
-  if (error instanceof DuplicateSkuCodeError) {
+  if (
+    error instanceof DuplicateSkuCodeError ||
+    error instanceof InvalidSkuCodeError ||
+    error instanceof InvalidSkuQuantityError
+  ) {
     return new BadRequestException(error.message);
   }
 
