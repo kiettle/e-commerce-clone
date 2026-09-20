@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import * as protobuf from 'protobufjs';
+import { InvalidProductEventError } from '../../application/errors/invalid-product-event.error';
 import { ProductSkuStatus } from '../../domain/enums/product-sku-status.enum';
 
 const PRODUCT_CREATED = 'PRODUCT_CREATED';
@@ -69,28 +70,36 @@ export class ProtobufProductEventSerializer {
   }
 
   encode(event: StoredProductEventEnvelope): Buffer {
-    this.validateEnvelope(event);
-    const payload = parseProductCreatedPayload(event.payload);
-    const occurredAtMilliseconds = event.occurredAt.getTime();
-    const eventPayload = {
-      eventId: event.eventId,
-      eventType: 0,
-      schemaVersion: event.schemaVersion,
-      occurredAt: {
-        seconds: Math.floor(occurredAtMilliseconds / 1_000).toString(),
-        nanos: (occurredAtMilliseconds % 1_000) * 1_000_000,
-      },
-      productCreated: payload,
-    };
+    try {
+      this.validateEnvelope(event);
+      const payload = parseProductCreatedPayload(event.payload);
+      const occurredAtMilliseconds = event.occurredAt.getTime();
+      const eventPayload = {
+        eventId: event.eventId,
+        eventType: 0,
+        schemaVersion: event.schemaVersion,
+        occurredAt: {
+          seconds: Math.floor(occurredAtMilliseconds / 1_000).toString(),
+          nanos: (occurredAtMilliseconds % 1_000) * 1_000_000,
+        },
+        productCreated: payload,
+      };
 
-    const message = this.productEventType.fromObject(eventPayload);
-    const verificationError = this.productEventType.verify(message);
+      const message = this.productEventType.fromObject(eventPayload);
+      const verificationError = this.productEventType.verify(message);
 
-    if (verificationError) {
-      throw new Error(`Invalid ProductCreated event: ${verificationError}`);
+      if (verificationError) {
+        throw new InvalidProductEventError(`Invalid ProductCreated event: ${verificationError}`);
+      }
+
+      return Buffer.from(this.productEventType.encode(message).finish());
+    } catch (error) {
+      if (error instanceof InvalidProductEventError) {
+        throw error;
+      }
+
+      throw new InvalidProductEventError(errorMessage(error));
     }
-
-    return Buffer.from(this.productEventType.encode(message).finish());
   }
 
   decodeProductCreated(buffer: Buffer): DecodedProductCreatedEvent {
@@ -124,36 +133,38 @@ export class ProtobufProductEventSerializer {
 
   private validateEnvelope(event: StoredProductEventEnvelope): void {
     if (!event.eventId.trim()) {
-      throw new Error('Product event ID must not be empty.');
+      throw new InvalidProductEventError('Product event ID must not be empty.');
     }
 
     if (event.eventType !== PRODUCT_CREATED) {
-      throw new Error(`Unsupported product event type: ${event.eventType}.`);
+      throw new InvalidProductEventError(`Unsupported product event type: ${event.eventType}.`);
     }
 
     if (event.schemaVersion !== PRODUCT_CREATED_SCHEMA_VERSION) {
-      throw new Error(`Unsupported PRODUCT_CREATED schema version: ${event.schemaVersion}.`);
+      throw new InvalidProductEventError(
+        `Unsupported PRODUCT_CREATED schema version: ${event.schemaVersion}.`,
+      );
     }
 
     if (!(event.occurredAt instanceof Date) || Number.isNaN(event.occurredAt.getTime())) {
-      throw new Error('Product event occurrence time is invalid.');
+      throw new InvalidProductEventError('Product event occurrence time is invalid.');
     }
   }
 }
 
 function parseProductCreatedPayload(payload: unknown): ProductCreatedPayload {
   if (!isRecord(payload)) {
-    throw new Error('ProductCreated payload must be an object.');
+    throw new InvalidProductEventError('ProductCreated payload must be an object.');
   }
 
   const productId = parsePositiveInt64(payload.productId, 'productId');
 
   if (typeof payload.name !== 'string' || !payload.name.trim()) {
-    throw new Error('ProductCreated payload name must not be empty.');
+    throw new InvalidProductEventError('ProductCreated payload name must not be empty.');
   }
 
   if (!Array.isArray(payload.skus) || payload.skus.length === 0) {
-    throw new Error('ProductCreated payload must contain at least one SKU.');
+    throw new InvalidProductEventError('ProductCreated payload must contain at least one SKU.');
   }
 
   return {
@@ -165,15 +176,19 @@ function parseProductCreatedPayload(payload: unknown): ProductCreatedPayload {
 
 function parseSku(value: unknown, index: number): ProductCreatedPayload['skus'][number] {
   if (!isRecord(value)) {
-    throw new Error(`ProductCreated SKU at index ${index} must be an object.`);
+    throw new InvalidProductEventError(`ProductCreated SKU at index ${index} must be an object.`);
   }
 
   if (typeof value.skuCode !== 'string' || !value.skuCode.trim()) {
-    throw new Error(`ProductCreated SKU at index ${index} has an invalid skuCode.`);
+    throw new InvalidProductEventError(
+      `ProductCreated SKU at index ${index} has an invalid skuCode.`,
+    );
   }
 
   if (!Object.values(ProductSkuStatus).includes(value.status as ProductSkuStatus)) {
-    throw new Error(`ProductCreated SKU at index ${index} has an invalid status.`);
+    throw new InvalidProductEventError(
+      `ProductCreated SKU at index ${index} has an invalid status.`,
+    );
   }
 
   return {
@@ -186,13 +201,15 @@ function parseSku(value: unknown, index: number): ProductCreatedPayload['skus'][
 
 function parsePositiveInt64(value: unknown, field: string): string {
   if (typeof value !== 'string') {
-    throw new Error(`${field} must be a decimal int64 value stored as a string.`);
+    throw new InvalidProductEventError(
+      `${field} must be a decimal int64 value stored as a string.`,
+    );
   }
 
   const parsed = parseInt64(value, field);
 
   if (BigInt(parsed) <= 0n) {
-    throw new Error(`${field} must be greater than zero.`);
+    throw new InvalidProductEventError(`${field} must be greater than zero.`);
   }
 
   return parsed;
@@ -202,7 +219,7 @@ function parseNonNegativeInt64(value: unknown, field: string): string {
   const parsed = parseInt64(value, field);
 
   if (BigInt(parsed) < 0n) {
-    throw new Error(`${field} must not be negative.`);
+    throw new InvalidProductEventError(`${field} must not be negative.`);
   }
 
   return parsed;
@@ -210,17 +227,17 @@ function parseNonNegativeInt64(value: unknown, field: string): string {
 
 function parseInt64(value: unknown, field: string): string {
   if (typeof value !== 'string' && (typeof value !== 'number' || !Number.isSafeInteger(value))) {
-    throw new Error(`${field} must be a decimal int64 value.`);
+    throw new InvalidProductEventError(`${field} must be a decimal int64 value.`);
   }
 
   const decimal = String(value);
   if (!/^-?\d+$/.test(decimal)) {
-    throw new Error(`${field} must be a decimal int64 value.`);
+    throw new InvalidProductEventError(`${field} must be a decimal int64 value.`);
   }
 
   const parsed = BigInt(decimal);
   if (parsed < -MAX_INT64 - 1n || parsed > MAX_INT64) {
-    throw new Error(`${field} is outside the int64 range.`);
+    throw new InvalidProductEventError(`${field} is outside the int64 range.`);
   }
 
   return decimal;
@@ -228,4 +245,8 @@ function parseInt64(value: unknown, field: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Stored product event is invalid.';
 }

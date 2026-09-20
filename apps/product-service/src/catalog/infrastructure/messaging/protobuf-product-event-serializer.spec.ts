@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProtobufProductEventDeserializer } from '../../../../../inventory-service/src/inventory/infrastructure/messaging/protobuf-product-event-deserializer';
+import { InvalidProductEventError } from '../../application/errors/invalid-product-event.error';
 import { ProductSkuStatus } from '../../domain/enums/product-sku-status.enum';
 import {
   ProtobufProductEventSerializer,
@@ -123,9 +124,9 @@ describe('ProtobufProductEventSerializer', () => {
   it('rejects malformed stored payloads', () => {
     const serializer = new ProtobufProductEventSerializer();
 
-    expect(() => serializer.encode({ ...storedEvent(), payload: { productId: '20' } })).toThrow(
-      'payload name must not be empty',
-    );
+    expect(() =>
+      serializer.encode({ ...storedEvent(), payload: { productId: '20' } }),
+    ).toThrowError(InvalidProductEventError);
   });
 
   function storedEvent(): StoredProductEventEnvelope {

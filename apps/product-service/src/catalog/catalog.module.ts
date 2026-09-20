@@ -1,9 +1,17 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   PRODUCT_CREATION_REPOSITORY,
   ProductCreationRepositoryPort,
 } from './application/ports/product-creation.repository.port';
-import { PRODUCT_OUTBOX_REPOSITORY } from './application/ports/product-outbox.repository.port';
+import {
+  PRODUCT_EVENT_TRANSPORT,
+  ProductEventTransportPort,
+} from './application/ports/product-event-transport.port';
+import {
+  PRODUCT_OUTBOX_REPOSITORY,
+  ProductOutboxRepositoryPort,
+} from './application/ports/product-outbox.repository.port';
 import { CreateCategoryUseCase } from './application/use-cases/create-category.use-case';
 import { CreateProductUseCase } from './application/use-cases/create-product.use-case';
 import { DeleteProductUseCase } from './application/use-cases/delete-product.use-case';
@@ -18,6 +26,9 @@ import {
   PRODUCT_REPOSITORY,
   ProductRepositoryPort,
 } from './domain/repositories/product.repository.port';
+import { KafkaProductEventPublisher } from './infrastructure/messaging/kafka-product-event-publisher';
+import { ProductOutboxPublisherWorker } from './infrastructure/messaging/product-outbox-publisher.worker';
+import { ProtobufProductEventSerializer } from './infrastructure/messaging/protobuf-product-event-serializer';
 import { PrismaCategoryRepository } from './infrastructure/persistence/prisma/category.prisma.repository';
 import { PrismaProductOutboxRepository } from './infrastructure/persistence/prisma/product-outbox.prisma.repository';
 import { PrismaProductRepository } from './infrastructure/persistence/prisma/product.prisma.repository';
@@ -31,6 +42,8 @@ import { ProductsController } from './presentation/http/products.controller';
     PrismaService,
     PrismaProductRepository,
     PrismaProductOutboxRepository,
+    ProtobufProductEventSerializer,
+    KafkaProductEventPublisher,
     {
       provide: CATEGORY_REPOSITORY,
       useClass: PrismaCategoryRepository,
@@ -46,6 +59,10 @@ import { ProductsController } from './presentation/http/products.controller';
     {
       provide: PRODUCT_OUTBOX_REPOSITORY,
       useExisting: PrismaProductOutboxRepository,
+    },
+    {
+      provide: PRODUCT_EVENT_TRANSPORT,
+      useExisting: KafkaProductEventPublisher,
     },
     {
       provide: CreateCategoryUseCase,
@@ -78,6 +95,15 @@ import { ProductsController } from './presentation/http/products.controller';
       provide: DeleteProductUseCase,
       useFactory: (products: ProductRepositoryPort) => new DeleteProductUseCase(products),
       inject: [PRODUCT_REPOSITORY],
+    },
+    {
+      provide: ProductOutboxPublisherWorker,
+      useFactory: (
+        outbox: ProductOutboxRepositoryPort,
+        transport: ProductEventTransportPort,
+        config: ConfigService,
+      ) => new ProductOutboxPublisherWorker(outbox, transport, config),
+      inject: [PRODUCT_OUTBOX_REPOSITORY, PRODUCT_EVENT_TRANSPORT, ConfigService],
     },
   ],
 })

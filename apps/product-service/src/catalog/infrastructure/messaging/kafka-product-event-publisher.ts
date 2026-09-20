@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Kafka, Partitioners, Producer } from 'kafkajs';
 import {
@@ -8,8 +8,9 @@ import {
 import { ProtobufProductEventSerializer } from './protobuf-product-event-serializer';
 
 @Injectable()
-export class KafkaProductEventPublisher implements ProductEventTransportPort, OnModuleDestroy {
-  private readonly logger = new Logger(KafkaProductEventPublisher.name);
+export class KafkaProductEventPublisher
+  implements ProductEventTransportPort, OnApplicationShutdown
+{
   private readonly producer: Producer;
   private readonly topic: string;
   private connectPromise?: Promise<void>;
@@ -40,26 +41,21 @@ export class KafkaProductEventPublisher implements ProductEventTransportPort, On
 
     await this.ensureConnected();
 
-    try {
-      await this.producer.send({
-        topic: this.topic,
-        messages: [
-          {
-            key: event.partitionKey,
-            value,
-          },
-        ],
-      });
-    } catch (error) {
-      this.logger.error('Failed to publish ProductCreated event.', error);
-      throw error;
-    }
+    await this.producer.send({
+      topic: this.topic,
+      messages: [
+        {
+          key: event.partitionKey,
+          value,
+        },
+      ],
+    });
   }
 
-  async onModuleDestroy(): Promise<void> {
-    if (this.connected) {
-      await this.producer.disconnect();
-    }
+  async onApplicationShutdown(): Promise<void> {
+    await this.producer.disconnect();
+    this.connected = false;
+    this.connectPromise = undefined;
   }
 
   private async ensureConnected(): Promise<void> {
@@ -67,9 +63,15 @@ export class KafkaProductEventPublisher implements ProductEventTransportPort, On
       return;
     }
 
-    this.connectPromise ??= this.producer.connect().then(() => {
-      this.connected = true;
-    });
+    this.connectPromise ??= this.producer
+      .connect()
+      .then(() => {
+        this.connected = true;
+      })
+      .catch((error: unknown) => {
+        this.connectPromise = undefined;
+        throw error;
+      });
 
     await this.connectPromise;
   }
