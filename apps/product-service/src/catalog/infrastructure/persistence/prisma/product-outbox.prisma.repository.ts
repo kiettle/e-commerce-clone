@@ -35,8 +35,7 @@ export class PrismaProductOutboxRepository implements ProductOutboxRepositoryPor
         WITH claimable AS MATERIALIZED (
           SELECT "id"
           FROM "product_outbox_events"
-          WHERE "aggregate_type" = 'PRODUCT'
-          AND (
+          WHERE (
             (
               "status" = 'PENDING'::"ProductOutboxStatus"
               AND "next_attempt_at" <= ${request.now}

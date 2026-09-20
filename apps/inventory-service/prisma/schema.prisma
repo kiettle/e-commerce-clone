@@ -84,3 +84,34 @@ model ProcessedProductEvent {
   @@index([productId])
   @@map("processed_product_events")
 }
+
+model FlashSaleStock {
+  id              BigInt   @id @default(autoincrement())
+  flashSaleId     BigInt   @map("flash_sale_id")
+  flashSaleItemId BigInt   @unique @map("flash_sale_item_id")
+  productSkuId    BigInt   @map("product_sku_id")
+  originalPrice   Decimal  @map("original_price") @db.Decimal(10, 2)
+  salePrice       Decimal  @map("sale_price") @db.Decimal(10, 2)
+  quantityLimit   Int      @map("quantity_limit")
+  startsAt        DateTime @map("starts_at")
+  endsAt          DateTime @map("ends_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([flashSaleId, productSkuId])
+  @@index([flashSaleId])
+  @@index([productSkuId, startsAt, endsAt])
+  @@map("flash_sale_stocks")
+}
+
+model ProcessedFlashSaleEvent {
+  eventId       String   @id @map("event_id") @db.VarChar(100)
+  eventType     String   @map("event_type") @db.VarChar(50)
+  schemaVersion Int      @map("schema_version")
+  payloadHash   String   @map("payload_hash") @db.Char(64)
+  flashSaleId   BigInt   @map("flash_sale_id")
+  processedAt   DateTime @default(now()) @map("processed_at")
+
+  @@index([flashSaleId])
+  @@map("processed_flash_sale_events")
+}

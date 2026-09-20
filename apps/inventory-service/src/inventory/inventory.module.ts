@@ -3,6 +3,11 @@ import {
   INVENTORY_REPOSITORY,
   InventoryRepositoryPort,
 } from './domain/repositories/inventory.repository.port';
+import {
+  FLASH_SALE_STOCK_REPOSITORY,
+  FlashSaleStockRepositoryPort,
+} from './domain/repositories/flash-sale-stock.repository.port';
+import { HandleFlashSaleScheduledUseCase } from './application/use-cases/handle-flash-sale-scheduled.use-case';
 import { HandleProductCreatedUseCase } from './application/use-cases/handle-product-created.use-case';
 import { CommitStockUseCase } from './application/use-cases/commit-stock.use-case';
 import { ReleaseStockUseCase } from './application/use-cases/release-stock.use-case';
@@ -12,6 +17,9 @@ import { ProtobufProductEventDeserializer } from './infrastructure/messaging/pro
 import { PrismaInventoryRepository } from './infrastructure/persistence/prisma/inventory.prisma.repository';
 import { PrismaService } from './infrastructure/persistence/prisma/prisma.service';
 import { InventoryGrpcController } from './presentation/grpc/inventory.grpc.controller';
+import { KafkaFlashSaleEventConsumer } from './infrastructure/messaging/kafka-flash-sale-event.consumer';
+import { ProtobufFlashSaleEventDeserializer } from './infrastructure/messaging/protobuf-flash-sale-event-deserializer';
+import { PrismaFlashSaleStockRepository } from './infrastructure/persistence/prisma/flash-sale-stock.prisma.repository';
 
 @Module({
   controllers: [InventoryGrpcController],
@@ -19,9 +27,22 @@ import { InventoryGrpcController } from './presentation/grpc/inventory.grpc.cont
     PrismaService,
     ProtobufProductEventDeserializer,
     KafkaProductEventConsumer,
+    ProtobufFlashSaleEventDeserializer,
+    KafkaFlashSaleEventConsumer,
+    PrismaFlashSaleStockRepository,
     {
       provide: INVENTORY_REPOSITORY,
       useClass: PrismaInventoryRepository,
+    },
+    {
+      provide: FLASH_SALE_STOCK_REPOSITORY,
+      useExisting: PrismaFlashSaleStockRepository,
+    },
+    {
+      provide: HandleFlashSaleScheduledUseCase,
+      useFactory: (repository: FlashSaleStockRepositoryPort) =>
+        new HandleFlashSaleScheduledUseCase(repository),
+      inject: [FLASH_SALE_STOCK_REPOSITORY],
     },
     {
       provide: HandleProductCreatedUseCase,

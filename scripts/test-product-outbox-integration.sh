@@ -13,6 +13,8 @@ INVENTORY_API_PORT="${OUTBOX_INVENTORY_API_PORT:-4311}"
 INVENTORY_GRPC_PORT="${OUTBOX_INVENTORY_GRPC_PORT:-9311}"
 TOPIC="product-events-integration-$(date +%s)-$$"
 KAFKA_GROUP="inventory-outbox-integration-$(date +%s)-$$"
+FLASH_TOPIC="flash-sale-events-integration-$(date +%s)-$$"
+FLASH_KAFKA_GROUP="inventory-flash-sale-integration-$(date +%s)-$$"
 TEMP_DIR="$(mktemp -d)"
 RESPONSE_FILE="$TEMP_DIR/response.json"
 PRODUCT_PID=''
@@ -202,6 +204,7 @@ start_product_service() {
     PRODUCT_DATABASE_URL="$PRODUCT_DATABASE_URL" \
     KAFKA_BROKERS=localhost:9094 \
     PRODUCT_EVENTS_TOPIC="$TOPIC" \
+    FLASH_SALE_EVENTS_TOPIC="$FLASH_TOPIC" \
     PRODUCT_OUTBOX_POLL_INTERVAL_MS="$poll_interval" \
     PRODUCT_OUTBOX_BATCH_SIZE=5 \
     PRODUCT_OUTBOX_LEASE_MS=5000 \
@@ -221,7 +224,9 @@ start_inventory_service() {
     INVENTORY_DATABASE_URL="$INVENTORY_DATABASE_URL" \
     KAFKA_BROKERS=localhost:9094 \
     PRODUCT_EVENTS_TOPIC="$TOPIC" \
+    FLASH_SALE_EVENTS_TOPIC="$FLASH_TOPIC" \
     INVENTORY_KAFKA_GROUP_ID="$KAFKA_GROUP" \
+    INVENTORY_FLASH_SALE_KAFKA_GROUP_ID="$FLASH_KAFKA_GROUP" \
     node dist/apps/inventory-service/main.js >"$log_file" 2>&1 &
   LAST_PID="$!"
 }
@@ -238,6 +243,7 @@ cleanup() {
   docker compose up -d redpanda >/dev/null 2>&1 || true
   if wait_for_redpanda >/dev/null 2>&1; then
     docker compose exec -T redpanda rpk topic delete "$TOPIC" >/dev/null 2>&1 || true
+    docker compose exec -T redpanda rpk topic delete "$FLASH_TOPIC" >/dev/null 2>&1 || true
   fi
   docker compose exec -T postgres-product psql -U postgres -d postgres \
     -c "DROP DATABASE IF EXISTS $PRODUCT_DATABASE_NAME WITH (FORCE);" >/dev/null 2>&1 || true
@@ -294,12 +300,13 @@ env \
     apps/product-service/src/catalog/infrastructure/persistence/prisma/product-outbox.prisma.repository.integration.spec.ts \
     apps/product-service/src/flash-sales/infrastructure/persistence/prisma/flash-sale.schema.integration.spec.ts \
     apps/product-service/src/flash-sales/infrastructure/persistence/prisma/flash-sale.prisma.repository.integration.spec.ts \
-    apps/inventory-service/src/inventory/infrastructure/persistence/prisma/inventory.prisma.repository.integration.spec.ts
+    apps/inventory-service/src/inventory/infrastructure/persistence/prisma/inventory.prisma.repository.integration.spec.ts \
+    apps/inventory-service/src/inventory/infrastructure/persistence/prisma/flash-sale-stock.prisma.repository.integration.spec.ts
 
 db_execute postgres-product "$PRODUCT_DATABASE_NAME" \
   'DELETE FROM "product_outbox_events"; DELETE FROM "product_skus"; DELETE FROM "products"; DELETE FROM "categories";'
 db_execute postgres-inventory "$INVENTORY_DATABASE_NAME" \
-  'DELETE FROM "stock_transactions"; DELETE FROM "stock_reservations"; DELETE FROM "inventory_stocks"; DELETE FROM "processed_product_events";'
+  'DELETE FROM "flash_sale_stocks"; DELETE FROM "processed_flash_sale_events"; DELETE FROM "stock_transactions"; DELETE FROM "stock_reservations"; DELETE FROM "inventory_stocks"; DELETE FROM "processed_product_events";'
 
 echo 'Scenario A — broker outage during product creation'
 docker compose stop redpanda >/dev/null
@@ -317,6 +324,7 @@ request POST "http://localhost:$PRODUCT_API_PORT/api/products" \
 assert_equal 201 "$HTTP_STATUS" 'product creation should return HTTP 201 while Redpanda is down'
 PRODUCT_ID="$(json_field id "$HTTP_BODY")"
 SKU_COUNT="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).skus.length))' "$HTTP_BODY")"
+SKU_ID="$(json_field skus.0.id "$HTTP_BODY")"
 EVENT_ID="$(db_value postgres-product "$PRODUCT_DATABASE_NAME" "SELECT \"id\" FROM \"product_outbox_events\" WHERE \"aggregate_id\" = $PRODUCT_ID;")"
 
 assert_equal 1 "$(db_value postgres-product "$PRODUCT_DATABASE_NAME" "SELECT COUNT(*) FROM \"products\" WHERE \"id\" = $PRODUCT_ID;")" 'product must exist'
@@ -331,6 +339,7 @@ if ! wait_for_redpanda; then
   exit 1
 fi
 docker compose exec -T redpanda rpk topic create "$TOPIC" >/dev/null
+docker compose exec -T redpanda rpk topic create "$FLASH_TOPIC" >/dev/null
 start_inventory_service "$TEMP_DIR/inventory.log"
 INVENTORY_PID="$LAST_PID"
 wait_for_http inventory-service "http://localhost:$INVENTORY_API_PORT/health" "$INVENTORY_PID" "$TEMP_DIR/inventory.log"
@@ -367,5 +376,56 @@ assert_equal "$SKU_COUNT" "$(db_value postgres-inventory "$INVENTORY_DATABASE_NA
 assert_equal "$SKU_COUNT" "$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT COUNT(*) FROM \"stock_transactions\" WHERE \"type\" = 'INITIALIZE';")" 'duplicate delivery must not duplicate initialization transactions'
 echo "  PASS eventId=$EVENT_ID deliveries=$DELIVERY_COUNT"
 
+echo 'Scenario E — flash sale scheduling catches up after a broker outage'
+stop_process "$REPLAY_PID"
+REPLAY_PID=''
+stop_process "$INVENTORY_PID"
+INVENTORY_PID=''
+docker compose stop redpanda >/dev/null
+
+FLASH_STARTS_AT="$(node -e 'process.stdout.write(new Date(Date.now() + 3600000).toISOString())')"
+FLASH_ENDS_AT="$(node -e 'process.stdout.write(new Date(Date.now() + 7200000).toISOString())')"
+request POST "http://localhost:$PRODUCT_API_PORT/api/flash-sales" \
+  "{\"name\":\"Outbox Integration Flash Sale\",\"description\":\"Broker outage verification\",\"startsAt\":\"$FLASH_STARTS_AT\",\"endsAt\":\"$FLASH_ENDS_AT\",\"items\":[{\"productSkuId\":$SKU_ID,\"salePrice\":49.90,\"quantity\":3}]}"
+assert_equal 201 "$HTTP_STATUS" 'flash sale draft creation should return HTTP 201'
+FLASH_SALE_ID="$(json_field id "$HTTP_BODY")"
+
+request POST "http://localhost:$PRODUCT_API_PORT/api/flash-sales/$FLASH_SALE_ID/schedule"
+assert_equal 201 "$HTTP_STATUS" 'flash sale scheduling should return HTTP 201 while Redpanda is down'
+FLASH_EVENT_ID="$(db_value postgres-product "$PRODUCT_DATABASE_NAME" "SELECT \"id\" FROM \"product_outbox_events\" WHERE \"event_type\" = 'FLASH_SALE_SCHEDULED' AND \"aggregate_id\" = $FLASH_SALE_ID;")"
+assert_equal PENDING "$(db_value postgres-product "$PRODUCT_DATABASE_NAME" "SELECT \"status\" FROM \"product_outbox_events\" WHERE \"id\" = '$FLASH_EVENT_ID';")" 'flash sale event must remain pending'
+assert_equal 0 "$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT COUNT(*) FROM \"flash_sale_stocks\" WHERE \"flash_sale_id\" = $FLASH_SALE_ID;")" 'flash sale projection must not initialize while Redpanda is down'
+curl -fsS "http://localhost:$PRODUCT_API_PORT/health" >/dev/null
+
+docker compose up -d redpanda >/dev/null
+if ! wait_for_redpanda; then
+  echo 'Timed out waiting for Redpanda after flash sale outage.' >&2
+  exit 1
+fi
+docker compose exec -T redpanda rpk topic create "$FLASH_TOPIC" >/dev/null 2>&1 || true
+start_inventory_service "$TEMP_DIR/flash-inventory.log"
+INVENTORY_PID="$LAST_PID"
+wait_for_http inventory-service "http://localhost:$INVENTORY_API_PORT/health" "$INVENTORY_PID" "$TEMP_DIR/flash-inventory.log"
+start_product_service "$REPLAY_API_PORT" 250 "$TEMP_DIR/flash-publisher.log"
+REPLAY_PID="$LAST_PID"
+wait_for_http replay-worker "http://localhost:$REPLAY_API_PORT/health" "$REPLAY_PID" "$TEMP_DIR/flash-publisher.log"
+
+wait_for_db_value postgres-product "$PRODUCT_DATABASE_NAME" \
+  "SELECT \"status\"::text FROM \"product_outbox_events\" WHERE \"id\" = '$FLASH_EVENT_ID';" \
+  PUBLISHED 'the pending flash sale event to publish'
+wait_for_db_value postgres-inventory "$INVENTORY_DATABASE_NAME" \
+  "SELECT COUNT(*) FROM \"processed_flash_sale_events\" WHERE \"event_id\" = '$FLASH_EVENT_ID';" \
+  1 'the flash sale processed-event marker'
+assert_equal 1 "$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT COUNT(*) FROM \"flash_sale_stocks\" WHERE \"flash_sale_id\" = $FLASH_SALE_ID;")" 'inventory must contain one flash sale projection row'
+
+db_execute postgres-product "$PRODUCT_DATABASE_NAME" \
+  "UPDATE \"product_outbox_events\" SET \"status\" = 'PROCESSING', \"lease_owner\" = 'lost-worker', \"lease_until\" = NOW() - INTERVAL '1 second', \"published_at\" = NULL WHERE \"id\" = '$FLASH_EVENT_ID';"
+wait_for_db_value postgres-product "$PRODUCT_DATABASE_NAME" \
+  "SELECT \"status\"::text || ':' || \"attempt_count\" FROM \"product_outbox_events\" WHERE \"id\" = '$FLASH_EVENT_ID';" \
+  'PUBLISHED:2' 'the flash sale event to be republished after lease expiry'
+assert_equal 1 "$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT COUNT(*) FROM \"processed_flash_sale_events\" WHERE \"event_id\" = '$FLASH_EVENT_ID';")" 'duplicate flash sale delivery must keep one marker'
+assert_equal 1 "$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT COUNT(*) FROM \"flash_sale_stocks\" WHERE \"flash_sale_id\" = $FLASH_SALE_ID;")" 'duplicate flash sale delivery must keep one projection row'
+echo "  PASS flashSaleId=$FLASH_SALE_ID eventId=$FLASH_EVENT_ID"
+
 echo
-echo 'All product outbox integration scenarios passed.'
+echo 'All product and flash sale outbox integration scenarios passed.'

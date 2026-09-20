@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package flashsale.events;
+
+import "google/protobuf/timestamp.proto";
+
+message FlashSaleEvent {
+  string event_id = 1;
+  EventType event_type = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  int32 schema_version = 4;
+
+  oneof payload {
+    FlashSaleScheduled flash_sale_scheduled = 10;
+  }
+}
+
+enum EventType {
+  FLASH_SALE_SCHEDULED = 0;
+}
+
+message FlashSaleScheduled {
+  int64 flash_sale_id = 1;
+  google.protobuf.Timestamp starts_at = 2;
+  google.protobuf.Timestamp ends_at = 3;
+  repeated FlashSaleItemSnapshot items = 4;
+}
+
+message FlashSaleItemSnapshot {
+  int64 flash_sale_item_id = 1;
+  int64 product_sku_id = 2;
+  string original_price = 3;
+  string sale_price = 4;
+  int32 quantity_limit = 5;
+}

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProductSkuStatus } from '../../domain/enums/product-sku-status.enum';
 import { KafkaProductEventPublisher } from './kafka-product-event-publisher';
 import { ProtobufProductEventSerializer } from './protobuf-product-event-serializer';
+import { ProtobufFlashSaleEventSerializer } from './protobuf-flash-sale-event-serializer';
 
 const kafkaMocks = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -33,7 +34,7 @@ describe('KafkaProductEventPublisher', () => {
     const config = {
       get: vi.fn(),
     } as unknown as ConfigService;
-    const publisher = new KafkaProductEventPublisher(config, new ProtobufProductEventSerializer());
+    const publisher = createPublisher(config);
 
     await expect(
       publisher.publish({
@@ -64,7 +65,7 @@ describe('KafkaProductEventPublisher', () => {
     const config = {
       get: vi.fn(),
     } as unknown as ConfigService;
-    const publisher = new KafkaProductEventPublisher(config, new ProtobufProductEventSerializer());
+    const publisher = createPublisher(config);
     const event = {
       eventId: '550e8400-e29b-41d4-a716-446655440000',
       eventType: 'PRODUCT_CREATED',
@@ -94,4 +95,50 @@ describe('KafkaProductEventPublisher', () => {
     expect(kafkaMocks.send).toHaveBeenCalledTimes(1);
     expect(kafkaMocks.disconnect).toHaveBeenCalledTimes(1);
   });
+
+  it('routes scheduled flash sales to their configured topic', async () => {
+    const config = {
+      get: vi.fn((name: string) =>
+        name === 'FLASH_SALE_EVENTS_TOPIC' ? 'configured-flash-sales' : undefined,
+      ),
+    } as unknown as ConfigService;
+    const publisher = createPublisher(config);
+
+    await publisher.publish({
+      eventId: '550e8400-e29b-41d4-a716-446655440000',
+      eventType: 'FLASH_SALE_SCHEDULED',
+      schemaVersion: 1,
+      partitionKey: '50',
+      occurredAt: new Date('2026-09-20T08:00:00.000Z'),
+      payload: {
+        flashSaleId: '50',
+        startsAt: '2026-10-01T08:00:00.000Z',
+        endsAt: '2026-10-01T10:00:00.000Z',
+        items: [
+          {
+            flashSaleItemId: '501',
+            productSkuId: '1001',
+            originalPrice: '100.00',
+            salePrice: '75.00',
+            quantity: 25,
+          },
+        ],
+      },
+    });
+
+    expect(kafkaMocks.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: 'configured-flash-sales',
+        messages: [expect.objectContaining({ key: '50' })],
+      }),
+    );
+  });
 });
+
+function createPublisher(config: ConfigService): KafkaProductEventPublisher {
+  return new KafkaProductEventPublisher(
+    config,
+    new ProtobufProductEventSerializer(),
+    new ProtobufFlashSaleEventSerializer(),
+  );
+}

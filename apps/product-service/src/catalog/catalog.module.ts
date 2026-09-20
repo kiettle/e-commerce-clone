@@ -29,6 +29,7 @@ import {
 import { KafkaProductEventPublisher } from './infrastructure/messaging/kafka-product-event-publisher';
 import { ProductOutboxPublisherWorker } from './infrastructure/messaging/product-outbox-publisher.worker';
 import { ProtobufProductEventSerializer } from './infrastructure/messaging/protobuf-product-event-serializer';
+import { ProtobufFlashSaleEventSerializer } from './infrastructure/messaging/protobuf-flash-sale-event-serializer';
 import { PrismaCategoryRepository } from './infrastructure/persistence/prisma/category.prisma.repository';
 import { PrismaProductOutboxRepository } from './infrastructure/persistence/prisma/product-outbox.prisma.repository';
 import { PrismaProductRepository } from './infrastructure/persistence/prisma/product.prisma.repository';
@@ -43,6 +44,7 @@ import { ProductsController } from './presentation/http/products.controller';
     PrismaProductRepository,
     PrismaProductOutboxRepository,
     ProtobufProductEventSerializer,
+    ProtobufFlashSaleEventSerializer,
     KafkaProductEventPublisher,
     {
       provide: CATEGORY_REPOSITORY,

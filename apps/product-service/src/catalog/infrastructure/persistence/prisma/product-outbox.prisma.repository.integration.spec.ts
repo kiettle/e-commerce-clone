@@ -128,13 +128,12 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
     expect(claimed.map((event) => event.id)).toEqual([eventId(1)]);
   });
 
-  it('does not claim events owned by another aggregate publisher', async () => {
+  it('claims flash sale events through the shared lease machinery', async () => {
     await insertEvent({ id: eventId(1), aggregateType: 'FLASH_SALE' });
 
-    await expect(repository.claimBatch(claimRequest('worker-a'))).resolves.toEqual([]);
-    await expect(
-      prisma.productOutboxEvent.findUniqueOrThrow({ where: { id: eventId(1) } }),
-    ).resolves.toMatchObject({ status: ProductOutboxStatus.Pending });
+    await expect(repository.claimBatch(claimRequest('worker-a'))).resolves.toEqual([
+      expect.objectContaining({ id: eventId(1), leaseOwner: 'worker-a' }),
+    ]);
   });
 
   it('claims events in created-at and ID order', async () => {
