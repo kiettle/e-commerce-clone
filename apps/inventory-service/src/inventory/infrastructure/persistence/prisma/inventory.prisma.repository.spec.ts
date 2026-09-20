@@ -5,6 +5,91 @@ import { InvalidStockOperationError } from '../../../domain/errors/invalid-stock
 import { PrismaInventoryRepository } from './inventory.prisma.repository';
 import { PrismaService } from './prisma.service';
 
+describe('PrismaInventoryRepository product initialization', () => {
+  const event = {
+    eventId: '550e8400-e29b-41d4-a716-446655440000',
+    productId: 20n,
+    name: 'Mechanical Keyboard',
+    skus: [
+      {
+        productSkuId: 101n,
+        skuCode: 'KEYBOARD-BLACK',
+        status: 'AVAILABLE',
+        quantity: 12,
+      },
+      {
+        productSkuId: 102n,
+        skuCode: 'KEYBOARD-WHITE',
+        status: 'OUT_OF_STOCK',
+        quantity: 0,
+      },
+    ],
+  };
+
+  it('initializes every SKU and records the processed event', async () => {
+    const { repository, transaction } = setupInitialization(null);
+
+    await repository.initializeFromProductCreated(event);
+
+    expect(transaction.inventoryStock.create).toHaveBeenCalledTimes(2);
+    expect(transaction.inventoryStock.create).toHaveBeenNthCalledWith(1, {
+      data: {
+        productId: 20n,
+        productSkuId: 101n,
+        skuCode: 'KEYBOARD-BLACK',
+        status: 'ACTIVE',
+        availableQuantity: 12,
+        reservedQuantity: 0,
+      },
+    });
+    expect(transaction.inventoryStock.create).toHaveBeenNthCalledWith(2, {
+      data: {
+        productId: 20n,
+        productSkuId: 102n,
+        skuCode: 'KEYBOARD-WHITE',
+        status: 'ACTIVE',
+        availableQuantity: 0,
+        reservedQuantity: 0,
+      },
+    });
+    expect(transaction.stockTransaction.create).toHaveBeenCalledTimes(2);
+    expect(transaction.stockTransaction.create).toHaveBeenNthCalledWith(1, {
+      data: {
+        productSkuId: 101n,
+        type: StockTransactionType.Initialize,
+        quantity: 12,
+      },
+    });
+    expect(transaction.stockTransaction.create).toHaveBeenNthCalledWith(2, {
+      data: {
+        productSkuId: 102n,
+        type: StockTransactionType.Initialize,
+        quantity: 0,
+      },
+    });
+    expect(transaction.processedProductEvent.create).toHaveBeenCalledWith({
+      data: {
+        eventId: event.eventId,
+        eventType: 'PRODUCT_CREATED',
+        productId: 20n,
+      },
+    });
+  });
+
+  it('treats a repeated event ID as a no-op', async () => {
+    const { repository, transaction } = setupInitialization({
+      eventId: event.eventId,
+    });
+
+    await repository.initializeFromProductCreated(event);
+
+    expect(transaction.inventoryStock.findUnique).not.toHaveBeenCalled();
+    expect(transaction.inventoryStock.create).not.toHaveBeenCalled();
+    expect(transaction.stockTransaction.create).not.toHaveBeenCalled();
+    expect(transaction.processedProductEvent.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('PrismaInventoryRepository reservation completion', () => {
   it('commits a reservation without restoring available quantity', async () => {
     const { repository, transaction } = setup([
@@ -69,6 +154,35 @@ describe('PrismaInventoryRepository reservation completion', () => {
     expect(transaction.inventoryStock.updateMany).not.toHaveBeenCalled();
   });
 });
+
+function setupInitialization(processedEvent: object | null) {
+  const transaction = {
+    processedProductEvent: {
+      findUnique: vi.fn().mockResolvedValue(processedEvent),
+      create: vi.fn(),
+    },
+    inventoryStock: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+    },
+    stockTransaction: {
+      create: vi.fn(),
+    },
+  };
+  const prisma = {
+    $transaction: vi.fn(
+      async (operation: (client: typeof transaction) => unknown) =>
+        operation(transaction),
+    ),
+  };
+
+  return {
+    repository: new PrismaInventoryRepository(
+      prisma as unknown as PrismaService,
+    ),
+    transaction,
+  };
+}
 
 function setup(reservations: ReturnType<typeof reservation>[]) {
   const transaction = {
