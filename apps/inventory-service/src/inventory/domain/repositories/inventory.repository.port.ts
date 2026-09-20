@@ -9,6 +9,8 @@ export interface ProductCreatedStockSku {
 
 export interface ProductCreatedStockEvent {
   eventId: string;
+  schemaVersion: number;
+  payloadHash: string;
   productId: bigint;
   name: string;
   skus: ProductCreatedStockSku[];

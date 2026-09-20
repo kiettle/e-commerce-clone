@@ -2,6 +2,7 @@ import { ProductCreatedStockSku } from '../../domain/repositories/inventory.repo
 
 export interface HandleProductCreatedCommand {
   eventId: string;
+  schemaVersion: number;
   productId: bigint;
   name: string;
   skus: ProductCreatedStockSku[];

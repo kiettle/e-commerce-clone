@@ -1,16 +1,18 @@
 import { join } from 'node:path';
 import * as protobuf from 'protobufjs';
-import { ProductCreatedStockEvent } from '../../domain/repositories/inventory.repository.port';
+import { HandleProductCreatedCommand } from '../../application/dto/handle-product-created.command';
 
 export interface DecodedProductEvent {
   eventId: string;
   eventType: string;
-  productCreated?: ProductCreatedStockEvent;
+  schemaVersion: number;
+  productCreated?: HandleProductCreatedCommand;
 }
 
 interface ProductEventObject {
   eventId?: string;
   eventType?: string;
+  schemaVersion?: number;
   productCreated?: {
     productId?: string;
     name?: string;
@@ -44,16 +46,19 @@ export class ProtobufProductEventDeserializer {
 
     const eventId = decoded.eventId ?? '';
     const eventType = decoded.eventType ?? '';
+    const schemaVersion = decoded.schemaVersion ?? 0;
 
     if (eventType !== 'PRODUCT_CREATED' || !decoded.productCreated) {
-      return { eventId, eventType };
+      return { eventId, eventType, schemaVersion };
     }
 
     return {
       eventId,
       eventType,
+      schemaVersion,
       productCreated: {
         eventId,
+        schemaVersion,
         productId: BigInt(decoded.productCreated.productId ?? 0),
         name: decoded.productCreated.name ?? '',
         skus: (decoded.productCreated.skus ?? []).map((sku) => ({

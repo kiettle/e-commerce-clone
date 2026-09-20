@@ -74,10 +74,12 @@ model StockTransaction {
 }
 
 model ProcessedProductEvent {
-  eventId     String   @id @map("event_id") @db.VarChar(100)
-  eventType   String   @map("event_type") @db.VarChar(50)
-  productId   BigInt?  @map("product_id")
-  processedAt DateTime @default(now()) @map("processed_at")
+  eventId       String   @id @map("event_id") @db.VarChar(100)
+  eventType     String   @map("event_type") @db.VarChar(50)
+  schemaVersion Int?     @map("schema_version")
+  payloadHash   String?  @map("payload_hash") @db.Char(64)
+  productId     BigInt?  @map("product_id")
+  processedAt   DateTime @default(now()) @map("processed_at")
 
   @@index([productId])
   @@map("processed_product_events")

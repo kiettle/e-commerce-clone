@@ -4,6 +4,7 @@ import {
   Prisma,
   StockReservation,
 } from '../../../../../../../prisma/generated/inventory';
+import { ConflictingProductEventError } from '../../../domain/errors/conflicting-product-event.error';
 import { ConflictingReservationError } from '../../../domain/errors/conflicting-reservation.error';
 import { InsufficientStockError } from '../../../domain/errors/insufficient-stock.error';
 import { InvalidStockOperationError } from '../../../domain/errors/invalid-stock-operation.error';
@@ -28,52 +29,58 @@ export class PrismaInventoryRepository implements InventoryRepositoryPort {
   async initializeFromProductCreated(
     event: ProductCreatedStockEvent,
   ): Promise<void> {
-    await this.prisma.$transaction(async (transaction) => {
-      const processedEvent = await transaction.processedProductEvent.findUnique({
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.processedProductEvent.create({
+          data: {
+            eventId: event.eventId,
+            eventType: 'PRODUCT_CREATED',
+            schemaVersion: event.schemaVersion,
+            payloadHash: event.payloadHash,
+            productId: event.productId,
+          },
+        });
+
+        for (const sku of event.skus) {
+          await transaction.inventoryStock.create({
+            data: {
+              productId: event.productId,
+              productSkuId: sku.productSkuId,
+              skuCode: sku.skuCode,
+              status: InventoryStockStatus.Active,
+              availableQuantity: sku.quantity,
+              reservedQuantity: 0,
+            },
+          });
+
+          await transaction.stockTransaction.create({
+            data: {
+              productSkuId: sku.productSkuId,
+              type: StockTransactionType.Initialize,
+              quantity: sku.quantity,
+            },
+          });
+        }
+      });
+    } catch (error) {
+      if (!isUniqueConstraintViolation(error)) {
+        throw error;
+      }
+
+      const processedEvent = await this.prisma.processedProductEvent.findUnique({
         where: { eventId: event.eventId },
       });
 
-      if (processedEvent) {
+      if (!processedEvent) {
+        throw error;
+      }
+
+      if (processedEvent.payloadHash === event.payloadHash) {
         return;
       }
 
-      for (const sku of event.skus) {
-        const existingStock = await transaction.inventoryStock.findUnique({
-          where: { productSkuId: sku.productSkuId },
-        });
-
-        if (existingStock) {
-          continue;
-        }
-
-        await transaction.inventoryStock.create({
-          data: {
-            productId: event.productId,
-            productSkuId: sku.productSkuId,
-            skuCode: sku.skuCode,
-            status: InventoryStockStatus.Active,
-            availableQuantity: sku.quantity,
-            reservedQuantity: 0,
-          },
-        });
-
-        await transaction.stockTransaction.create({
-          data: {
-            productSkuId: sku.productSkuId,
-            type: StockTransactionType.Initialize,
-            quantity: sku.quantity,
-          },
-        });
-      }
-
-      await transaction.processedProductEvent.create({
-        data: {
-          eventId: event.eventId,
-          eventType: 'PRODUCT_CREATED',
-          productId: event.productId,
-        },
-      });
-    });
+      throw new ConflictingProductEventError(event.eventId);
+    }
   }
 
   async reserveStock(
@@ -424,5 +431,14 @@ function toReservationMap(
       reservation.productSkuId.toString(),
       reservation,
     ]),
+  );
+}
+
+function isUniqueConstraintViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'P2002'
   );
 }

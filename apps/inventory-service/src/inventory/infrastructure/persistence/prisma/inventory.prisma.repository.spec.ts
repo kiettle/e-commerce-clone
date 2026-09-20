@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { StockReservationStatus } from '../../../domain/enums/stock-reservation-status.enum';
 import { StockTransactionType } from '../../../domain/enums/stock-transaction-type.enum';
+import { ConflictingProductEventError } from '../../../domain/errors/conflicting-product-event.error';
 import { InvalidStockOperationError } from '../../../domain/errors/invalid-stock-operation.error';
 import { PrismaInventoryRepository } from './inventory.prisma.repository';
 import { PrismaService } from './prisma.service';
@@ -8,6 +9,8 @@ import { PrismaService } from './prisma.service';
 describe('PrismaInventoryRepository product initialization', () => {
   const event = {
     eventId: '550e8400-e29b-41d4-a716-446655440000',
+    schemaVersion: 1,
+    payloadHash: 'a'.repeat(64),
     productId: 20n,
     name: 'Mechanical Keyboard',
     skus: [
@@ -27,7 +30,7 @@ describe('PrismaInventoryRepository product initialization', () => {
   };
 
   it('initializes every SKU and records the processed event', async () => {
-    const { repository, transaction } = setupInitialization(null);
+    const { repository, transaction } = setupInitialization();
 
     await repository.initializeFromProductCreated(event);
 
@@ -71,30 +74,53 @@ describe('PrismaInventoryRepository product initialization', () => {
       data: {
         eventId: event.eventId,
         eventType: 'PRODUCT_CREATED',
+        schemaVersion: 1,
+        payloadHash: event.payloadHash,
         productId: 20n,
       },
     });
+    expect(transaction.processedProductEvent.create.mock.invocationCallOrder[0]).toBeLessThan(
+      transaction.inventoryStock.create.mock.invocationCallOrder[0],
+    );
   });
 
-  it('treats a repeated event ID as a no-op', async () => {
-    const { repository, transaction } = setupInitialization({
-      eventId: event.eventId,
+  it('treats a repeated event ID with the same hash as a no-op', async () => {
+    const { repository, prisma, transaction } = setupInitialization({
+      markerError: uniqueConstraintError(),
+      existingMarker: {
+        eventId: event.eventId,
+        payloadHash: event.payloadHash,
+      },
     });
 
     await repository.initializeFromProductCreated(event);
 
-    expect(transaction.inventoryStock.findUnique).not.toHaveBeenCalled();
     expect(transaction.inventoryStock.create).not.toHaveBeenCalled();
     expect(transaction.stockTransaction.create).not.toHaveBeenCalled();
-    expect(transaction.processedProductEvent.create).not.toHaveBeenCalled();
+    expect(prisma.processedProductEvent.findUnique).toHaveBeenCalledWith({
+      where: { eventId: event.eventId },
+    });
+  });
+
+  it('rejects a repeated event ID with a different hash', async () => {
+    const { repository, transaction } = setupInitialization({
+      markerError: uniqueConstraintError(),
+      existingMarker: {
+        eventId: event.eventId,
+        payloadHash: 'b'.repeat(64),
+      },
+    });
+
+    await expect(repository.initializeFromProductCreated(event)).rejects.toBeInstanceOf(
+      ConflictingProductEventError,
+    );
+    expect(transaction.inventoryStock.create).not.toHaveBeenCalled();
   });
 });
 
 describe('PrismaInventoryRepository reservation completion', () => {
   it('commits a reservation without restoring available quantity', async () => {
-    const { repository, transaction } = setup([
-      reservation(101n, StockReservationStatus.Reserved),
-    ]);
+    const { repository, transaction } = setup([reservation(101n, StockReservationStatus.Reserved)]);
 
     await repository.commitStock(55n, [{ productSkuId: 101n, quantity: 2 }]);
 
@@ -155,14 +181,19 @@ describe('PrismaInventoryRepository reservation completion', () => {
   });
 });
 
-function setupInitialization(processedEvent: object | null) {
+function setupInitialization(
+  options: {
+    markerError?: unknown;
+    existingMarker?: object | null;
+  } = {},
+) {
   const transaction = {
     processedProductEvent: {
-      findUnique: vi.fn().mockResolvedValue(processedEvent),
-      create: vi.fn(),
+      create: options.markerError
+        ? vi.fn().mockRejectedValue(options.markerError)
+        : vi.fn().mockResolvedValue({}),
     },
     inventoryStock: {
-      findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn(),
     },
     stockTransaction: {
@@ -170,18 +201,23 @@ function setupInitialization(processedEvent: object | null) {
     },
   };
   const prisma = {
-    $transaction: vi.fn(
-      async (operation: (client: typeof transaction) => unknown) =>
-        operation(transaction),
+    processedProductEvent: {
+      findUnique: vi.fn().mockResolvedValue(options.existingMarker ?? null),
+    },
+    $transaction: vi.fn(async (operation: (client: typeof transaction) => unknown) =>
+      operation(transaction),
     ),
   };
 
   return {
-    repository: new PrismaInventoryRepository(
-      prisma as unknown as PrismaService,
-    ),
+    repository: new PrismaInventoryRepository(prisma as unknown as PrismaService),
+    prisma,
     transaction,
   };
+}
+
+function uniqueConstraintError() {
+  return { code: 'P2002' };
 }
 
 function setup(reservations: ReturnType<typeof reservation>[]) {
@@ -199,16 +235,13 @@ function setup(reservations: ReturnType<typeof reservation>[]) {
     },
   };
   const prisma = {
-    $transaction: vi.fn(
-      async (operation: (client: typeof transaction) => unknown) =>
-        operation(transaction),
+    $transaction: vi.fn(async (operation: (client: typeof transaction) => unknown) =>
+      operation(transaction),
     ),
   };
 
   return {
-    repository: new PrismaInventoryRepository(
-      prisma as unknown as PrismaService,
-    ),
+    repository: new PrismaInventoryRepository(prisma as unknown as PrismaService),
     transaction,
   };
 }

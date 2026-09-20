@@ -83,8 +83,10 @@ describe('ProtobufProductEventSerializer', () => {
     expect(deserializer.decode(serializer.encode(event))).toEqual({
       eventId: event.eventId,
       eventType: 'PRODUCT_CREATED',
+      schemaVersion: 1,
       productCreated: {
         eventId: event.eventId,
+        schemaVersion: 1,
         productId: 20n,
         name: 'Mechanical Keyboard',
         skus: [
