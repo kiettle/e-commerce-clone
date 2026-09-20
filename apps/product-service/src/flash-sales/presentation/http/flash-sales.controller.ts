@@ -10,12 +10,15 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { CancelFlashSaleUseCase } from '../../application/use-cases/cancel-flash-sale.use-case';
 import { CreateFlashSaleUseCase } from '../../application/use-cases/create-flash-sale.use-case';
 import { GetFlashSaleUseCase } from '../../application/use-cases/get-flash-sale.use-case';
+import { ListFlashSalesUseCase } from '../../application/use-cases/list-flash-sales.use-case';
 import { ScheduleFlashSaleUseCase } from '../../application/use-cases/schedule-flash-sale.use-case';
 import { UpdateFlashSaleUseCase } from '../../application/use-cases/update-flash-sale.use-case';
+import { FlashSaleStatus } from '../../domain/enums/flash-sale-status.enum';
 import { FlashSaleNotDraftError } from '../../domain/errors/flash-sale-not-draft.error';
 import { FlashSaleNotFoundError } from '../../domain/errors/flash-sale-not-found.error';
 import { FlashSaleOverlapError } from '../../domain/errors/flash-sale-overlap.error';
@@ -25,8 +28,14 @@ import { FlashSaleScheduleTimeError } from '../../domain/errors/flash-sale-sched
 import { FlashSaleSkuInactiveError } from '../../domain/errors/flash-sale-sku-inactive.error';
 import { FlashSaleSkuNotFoundError } from '../../domain/errors/flash-sale-sku-not-found.error';
 import { InvalidFlashSaleError } from '../../domain/errors/invalid-flash-sale.error';
-import { FlashSaleResponse, toFlashSaleResponse } from './flash-sale-response.mapper';
+import {
+  FlashSaleResponse,
+  PublicFlashSaleResponse,
+  toFlashSaleResponse,
+  toPublicFlashSaleResponse,
+} from './flash-sale-response.mapper';
 import { CreateFlashSaleRequestDto, UpdateFlashSaleRequestDto } from './dto/flash-sale-request.dto';
+import { FlashSaleListStatus, ListFlashSalesQueryDto } from './dto/list-flash-sales-query.dto';
 
 @Controller('api/flash-sales')
 export class FlashSalesController {
@@ -35,8 +44,20 @@ export class FlashSalesController {
     private readonly updateFlashSale: UpdateFlashSaleUseCase,
     private readonly cancelFlashSale: CancelFlashSaleUseCase,
     private readonly getFlashSale: GetFlashSaleUseCase,
+    private readonly listFlashSales: ListFlashSalesUseCase,
     private readonly scheduleFlashSale: ScheduleFlashSaleUseCase,
   ) {}
+
+  @Get()
+  async list(@Query() query: ListFlashSalesQueryDto): Promise<PublicFlashSaleResponse[]> {
+    const status =
+      query.status === FlashSaleListStatus.Active
+        ? FlashSaleStatus.Active
+        : FlashSaleStatus.Upcoming;
+    const result = await this.listFlashSales.execute(status);
+    const clock = { now: () => result.evaluatedAt };
+    return result.flashSales.map((flashSale) => toPublicFlashSaleResponse(flashSale, clock));
+  }
 
   @Post()
   async create(@Body() body: CreateFlashSaleRequestDto): Promise<FlashSaleResponse> {
@@ -105,9 +126,11 @@ export class FlashSalesController {
   }
 
   @Get(':flashSaleId')
-  async get(@Param('flashSaleId', ParseIntPipe) flashSaleId: number): Promise<FlashSaleResponse> {
+  async get(
+    @Param('flashSaleId', ParseIntPipe) flashSaleId: number,
+  ): Promise<PublicFlashSaleResponse> {
     try {
-      return toFlashSaleResponse(await this.getFlashSale.execute(BigInt(flashSaleId)));
+      return toPublicFlashSaleResponse(await this.getFlashSale.execute(BigInt(flashSaleId)));
     } catch (error) {
       throw mapFlashSaleError(error);
     }

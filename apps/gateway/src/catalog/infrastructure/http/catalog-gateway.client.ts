@@ -14,6 +14,8 @@ import {
 import {
   CreateFlashSaleRequestDto,
   FlashSaleResponseDto,
+  ListFlashSalesQueryDto,
+  PublicFlashSaleResponseDto,
   UpdateFlashSaleRequestDto,
 } from '../../presentation/http/dto/flash-sale.dto';
 
@@ -95,6 +97,16 @@ export class CatalogGatewayClient {
     });
   }
 
+  listFlashSales(query: ListFlashSalesQueryDto): Promise<PublicFlashSaleResponseDto[]> {
+    return this.httpClient.request<PublicFlashSaleResponseDto[]>({
+      serviceName: 'product-service',
+      baseUrl: this.getProductServiceUrl(),
+      path: '/api/flash-sales',
+      method: 'GET',
+      query: { status: query.status },
+    });
+  }
+
   updateFlashSale(
     flashSaleId: number,
     body: UpdateFlashSaleRequestDto,
@@ -117,8 +129,8 @@ export class CatalogGatewayClient {
     });
   }
 
-  getFlashSale(flashSaleId: number): Promise<FlashSaleResponseDto> {
-    return this.httpClient.request<FlashSaleResponseDto>({
+  getFlashSale(flashSaleId: number): Promise<PublicFlashSaleResponseDto> {
+    return this.httpClient.request<PublicFlashSaleResponseDto>({
       serviceName: 'product-service',
       baseUrl: this.getProductServiceUrl(),
       path: `/api/flash-sales/${flashSaleId}`,

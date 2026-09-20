@@ -9,6 +9,7 @@ describe('ScheduleFlashSaleUseCase', () => {
       findSkusByIds: vi.fn(),
       create: vi.fn(),
       findById: vi.fn(),
+      findByEffectiveStatus: vi.fn(),
       replaceDraft: vi.fn(),
       cancelDraft: vi.fn(),
       scheduleDraft: vi.fn().mockResolvedValue({}),

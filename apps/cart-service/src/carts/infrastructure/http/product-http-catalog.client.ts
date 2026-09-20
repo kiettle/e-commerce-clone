@@ -6,74 +6,59 @@ import {
   ProductSkuSnapshot,
 } from '../../application/ports/product-catalog.port';
 
-interface ProductResponse {
-  id: number;
-  name: string;
+interface ProductSkuSnapshotResponse {
+  productId: string;
+  productName: string;
   imageUrl?: string | null;
-  skus: Array<{
-    id: number;
-    skuCode: string;
-    price: number;
-  }>;
+  productSkuId: string;
+  skuCode: string;
+  regularPrice: number;
+  effectivePrice: number;
+  priceSource: 'REGULAR' | 'FLASH_SALE';
 }
 
 @Injectable()
 export class ProductHttpCatalogClient implements ProductCatalogPort {
   constructor(private readonly configService: ConfigService) {}
 
-  async getProductSkuSnapshot(
-    productSkuId: bigint,
-  ): Promise<ProductSkuSnapshot | null> {
-    const products = await this.fetchProducts();
-
-    for (const product of products) {
-      const sku = product.skus.find(
-        (candidate) => BigInt(candidate.id) === productSkuId,
-      );
-
-      if (sku) {
-        return {
-          productId: BigInt(product.id),
-          productName: product.name,
-          imageUrl: product.imageUrl,
-          productSkuId,
-          skuCode: sku.skuCode,
-          price: sku.price,
-        };
-      }
-    }
-
-    return null;
-  }
-
-  private async fetchProducts(): Promise<ProductResponse[]> {
+  async getProductSkuSnapshot(productSkuId: bigint): Promise<ProductSkuSnapshot | null> {
     const baseUrl = this.getProductServiceUrl();
 
     try {
-      const response = await fetch(`${baseUrl}/api/products`);
+      const response = await fetch(
+        `${baseUrl}/internal/product-skus/${productSkuId.toString()}/snapshot`,
+      );
 
-      if (!response.ok) {
-        throw new ProductSnapshotUnavailableError(
-          `Product service returned ${response.status}.`,
-        );
+      if (response.status === 404) {
+        return null;
       }
 
-      return (await response.json()) as ProductResponse[];
+      if (!response.ok) {
+        throw new ProductSnapshotUnavailableError(`Product service returned ${response.status}.`);
+      }
+
+      const snapshot = (await response.json()) as ProductSkuSnapshotResponse;
+      return {
+        productId: BigInt(snapshot.productId),
+        productName: snapshot.productName,
+        imageUrl: snapshot.imageUrl,
+        productSkuId: BigInt(snapshot.productSkuId),
+        skuCode: snapshot.skuCode,
+        price: snapshot.effectivePrice,
+        regularPrice: snapshot.regularPrice,
+        priceSource: snapshot.priceSource,
+      };
     } catch (error) {
       if (error instanceof ProductSnapshotUnavailableError) {
         throw error;
       }
 
-      throw new ProductSnapshotUnavailableError(
-        'Product service request failed.',
-      );
+      throw new ProductSnapshotUnavailableError('Product service request failed.');
     }
   }
 
   private getProductServiceUrl(): string {
-    const url =
-      this.configService.get<string>('PRODUCT_SERVICE_URL') ??
-      'http://localhost:4001';
+    const url = this.configService.get<string>('PRODUCT_SERVICE_URL') ?? 'http://localhost:4001';
 
     return url.replace(/\/$/, '');
   }

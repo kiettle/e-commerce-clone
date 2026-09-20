@@ -12,6 +12,7 @@ import {
   MinLength,
   ValidateIf,
   ValidateNested,
+  IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -21,6 +22,17 @@ export enum GatewayFlashSaleStatus {
   Active = 'ACTIVE',
   Ended = 'ENDED',
   Cancelled = 'CANCELLED',
+}
+
+export enum FlashSaleListStatus {
+  Active = 'active',
+  Upcoming = 'upcoming',
+}
+
+export class ListFlashSalesQueryDto {
+  @ApiProperty({ enum: FlashSaleListStatus, example: FlashSaleListStatus.Active })
+  @IsEnum(FlashSaleListStatus)
+  status!: FlashSaleListStatus;
 }
 
 export class FlashSaleItemRequestDto {
@@ -138,5 +150,48 @@ export class FlashSaleResponseDto {
   createdAt!: string;
 
   @ApiProperty({ example: '2026-09-20T08:00:00.000Z', format: 'date-time' })
+  updatedAt!: string;
+}
+
+export class PublicFlashSaleItemResponseDto {
+  @ApiProperty({ example: 1 })
+  id!: number;
+
+  @ApiProperty({ example: 101 })
+  productSkuId!: number;
+
+  @ApiProperty({ example: 99.9 })
+  originalPrice!: number;
+
+  @ApiProperty({ example: 79.9 })
+  salePrice!: number;
+}
+
+export class PublicFlashSaleResponseDto {
+  @ApiProperty({ example: 1 })
+  id!: number;
+
+  @ApiProperty({ example: 'Weekend keyboard sale' })
+  name!: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  description!: string | null;
+
+  @ApiProperty({ example: '2026-09-26T01:00:00.000Z', format: 'date-time' })
+  startsAt!: string;
+
+  @ApiProperty({ example: '2026-09-26T03:00:00.000Z', format: 'date-time' })
+  endsAt!: string;
+
+  @ApiProperty({ enum: GatewayFlashSaleStatus })
+  status!: GatewayFlashSaleStatus;
+
+  @ApiProperty({ type: () => [PublicFlashSaleItemResponseDto] })
+  items!: PublicFlashSaleItemResponseDto[];
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
   updatedAt!: string;
 }

@@ -21,6 +21,10 @@ export interface FlashSaleResponse {
   updatedAt: string;
 }
 
+export interface PublicFlashSaleResponse extends Omit<FlashSaleResponse, 'items'> {
+  items: Array<Omit<FlashSaleItemResponse, 'quantity'>>;
+}
+
 const systemClock: Clock = { now: () => new Date() };
 
 export function toFlashSaleResponse(
@@ -52,5 +56,21 @@ export function toFlashSaleResponse(
     })),
     createdAt: flashSale.createdAt.toISOString(),
     updatedAt: flashSale.updatedAt.toISOString(),
+  };
+}
+
+export function toPublicFlashSaleResponse(
+  flashSale: FlashSaleEntity,
+  clock: Clock = systemClock,
+): PublicFlashSaleResponse {
+  const response = toFlashSaleResponse(flashSale, clock);
+  return {
+    ...response,
+    items: response.items.map((item) => ({
+      id: item.id,
+      productSkuId: item.productSkuId,
+      originalPrice: item.originalPrice,
+      salePrice: item.salePrice,
+    })),
   };
 }

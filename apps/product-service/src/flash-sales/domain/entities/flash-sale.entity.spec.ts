@@ -34,6 +34,14 @@ describe('FlashSaleEntity', () => {
     );
   });
 
+  it('reports a scheduled sale as ACTIVE exactly at startsAt', () => {
+    const flashSale = createScheduledSale();
+
+    expect(flashSale.getEffectiveStatus(clockAt('2026-09-20T10:00:00.000Z'))).toBe(
+      FlashSaleStatus.Active,
+    );
+  });
+
   it('reports an expired scheduled sale as ENDED', () => {
     const flashSale = createScheduledSale();
 

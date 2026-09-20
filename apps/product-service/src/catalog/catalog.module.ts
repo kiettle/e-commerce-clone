@@ -36,16 +36,34 @@ import { PrismaProductRepository } from './infrastructure/persistence/prisma/pro
 import { PrismaService } from './infrastructure/persistence/prisma/prisma.service';
 import { CategoriesController } from './presentation/http/categories.controller';
 import { ProductsController } from './presentation/http/products.controller';
+import { InternalProductSkusController } from './presentation/http/internal-product-skus.controller';
+import {
+  PRODUCT_SKU_SNAPSHOT_REPOSITORY,
+  ProductSkuSnapshotRepositoryPort,
+} from './application/ports/product-sku-snapshot.repository.port';
+import { GetProductSkuSnapshotUseCase } from './application/use-cases/get-product-sku-snapshot.use-case';
+import { PrismaProductSkuSnapshotRepository } from './infrastructure/persistence/prisma/product-sku-snapshot.prisma.repository';
 
 @Module({
-  controllers: [CategoriesController, ProductsController],
+  controllers: [CategoriesController, ProductsController, InternalProductSkusController],
   providers: [
     PrismaService,
     PrismaProductRepository,
     PrismaProductOutboxRepository,
+    PrismaProductSkuSnapshotRepository,
     ProtobufProductEventSerializer,
     ProtobufFlashSaleEventSerializer,
     KafkaProductEventPublisher,
+    {
+      provide: PRODUCT_SKU_SNAPSHOT_REPOSITORY,
+      useExisting: PrismaProductSkuSnapshotRepository,
+    },
+    {
+      provide: GetProductSkuSnapshotUseCase,
+      useFactory: (snapshots: ProductSkuSnapshotRepositoryPort) =>
+        new GetProductSkuSnapshotUseCase(snapshots),
+      inject: [PRODUCT_SKU_SNAPSHOT_REPOSITORY],
+    },
     {
       provide: CATEGORY_REPOSITORY,
       useClass: PrismaCategoryRepository,

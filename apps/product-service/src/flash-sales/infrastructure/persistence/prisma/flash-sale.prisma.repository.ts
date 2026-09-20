@@ -98,6 +98,24 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
     return flashSale ? this.toDomain(flashSale) : null;
   }
 
+  async findByEffectiveStatus(
+    status: FlashSaleStatus.Active | FlashSaleStatus.Upcoming,
+    at: Date,
+  ): Promise<FlashSaleEntity[]> {
+    const active = status === FlashSaleStatus.Active;
+    const flashSales = await this.prisma.flashSale.findMany({
+      where: {
+        status: FlashSaleStatus.Scheduled,
+        startsAt: active ? { lte: at } : { gt: at },
+        ...(active ? { endsAt: { gt: at } } : {}),
+      },
+      include: { items: { orderBy: { id: 'asc' } } },
+      orderBy: active ? [{ endsAt: 'asc' }, { id: 'asc' }] : [{ startsAt: 'asc' }, { id: 'asc' }],
+    });
+
+    return flashSales.map((flashSale) => this.toDomain(flashSale));
+  }
+
   async replaceDraft(flashSale: FlashSaleEntity): Promise<FlashSaleEntity> {
     const flashSaleId = this.requireId(flashSale);
 

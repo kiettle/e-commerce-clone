@@ -7,10 +7,10 @@ export interface ProductSkuSnapshot {
   productSkuId: bigint;
   skuCode: string;
   price: number;
+  regularPrice: number;
+  priceSource: 'REGULAR' | 'FLASH_SALE';
 }
 
 export interface ProductCatalogPort {
-  getProductSkuSnapshot(
-    productSkuId: bigint,
-  ): Promise<ProductSkuSnapshot | null>;
+  getProductSkuSnapshot(productSkuId: bigint): Promise<ProductSkuSnapshot | null>;
 }

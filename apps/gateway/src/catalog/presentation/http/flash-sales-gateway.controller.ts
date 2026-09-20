@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -30,18 +31,28 @@ import { CatalogGatewayClient } from '../../infrastructure/http/catalog-gateway.
 import {
   CreateFlashSaleRequestDto,
   FlashSaleResponseDto,
+  ListFlashSalesQueryDto,
+  PublicFlashSaleResponseDto,
   UpdateFlashSaleRequestDto,
 } from './dto/flash-sale.dto';
 
 @ApiTags('flash sales')
 @ApiBearerAuth()
-@Roles(UserRole.Admin)
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('api/flash-sales')
 export class FlashSalesGatewayController {
   constructor(private readonly catalogClient: CatalogGatewayClient) {}
 
+  @Get()
+  @ApiOperation({ summary: 'List active or upcoming flash sales' })
+  @ApiOkResponse({ type: [PublicFlashSaleResponseDto] })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid token.' })
+  list(@Query() query: ListFlashSalesQueryDto): Promise<PublicFlashSaleResponseDto[]> {
+    return this.catalogClient.listFlashSales(query);
+  }
+
   @Post()
+  @Roles(UserRole.Admin)
   @ApiOperation({ summary: 'Create a flash-sale draft' })
   @ApiCreatedResponse({ type: FlashSaleResponseDto })
   @ApiBadRequestResponse({ description: 'Invalid draft, item, price, quantity, or time window.' })
@@ -53,6 +64,7 @@ export class FlashSalesGatewayController {
   }
 
   @Put(':flashSaleId')
+  @Roles(UserRole.Admin)
   @ApiOperation({ summary: 'Replace a flash-sale draft' })
   @ApiParam({ name: 'flashSaleId', example: 1, type: Number })
   @ApiOkResponse({ type: FlashSaleResponseDto })
@@ -69,6 +81,7 @@ export class FlashSalesGatewayController {
   }
 
   @Delete(':flashSaleId')
+  @Roles(UserRole.Admin)
   @ApiOperation({ summary: 'Cancel a flash-sale draft' })
   @ApiParam({ name: 'flashSaleId', example: 1, type: Number })
   @ApiOkResponse({ type: FlashSaleResponseDto })
@@ -81,6 +94,7 @@ export class FlashSalesGatewayController {
   }
 
   @Post(':flashSaleId/schedule')
+  @Roles(UserRole.Admin)
   @ApiOperation({ summary: 'Schedule a flash-sale draft atomically' })
   @ApiParam({ name: 'flashSaleId', example: 1, type: Number })
   @ApiOkResponse({ type: FlashSaleResponseDto })
@@ -99,11 +113,12 @@ export class FlashSalesGatewayController {
   @Get(':flashSaleId')
   @ApiOperation({ summary: 'Get a flash sale, including cancelled sales' })
   @ApiParam({ name: 'flashSaleId', example: 1, type: Number })
-  @ApiOkResponse({ type: FlashSaleResponseDto })
+  @ApiOkResponse({ type: PublicFlashSaleResponseDto })
   @ApiNotFoundResponse({ description: 'Flash sale not found.' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid token.' })
-  @ApiForbiddenResponse({ description: 'Administrator role required.' })
-  get(@Param('flashSaleId', ParseIntPipe) flashSaleId: number): Promise<FlashSaleResponseDto> {
+  get(
+    @Param('flashSaleId', ParseIntPipe) flashSaleId: number,
+  ): Promise<PublicFlashSaleResponseDto> {
     return this.catalogClient.getFlashSale(flashSaleId);
   }
 }
