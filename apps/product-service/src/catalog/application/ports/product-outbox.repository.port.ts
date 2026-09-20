@@ -1,9 +1,15 @@
 import { ProductOutboxStatus } from '../enums/product-outbox-status.enum';
-import { ProductEvent } from './product-event-transport.port';
 
 export const PRODUCT_OUTBOX_REPOSITORY = Symbol('PRODUCT_OUTBOX_REPOSITORY');
 
-export interface ClaimedProductOutboxEvent extends ProductEvent {
+export interface ClaimedProductOutboxEvent {
+  id: string;
+  aggregateId: bigint;
+  eventType: string;
+  schemaVersion: number;
+  partitionKey: string;
+  occurredAt: Date;
+  payload: Record<string, unknown>;
   attemptCount: number;
   leaseOwner: string;
   leaseUntil: Date;
@@ -25,9 +31,7 @@ export interface FailedProductOutboxAttempt {
 }
 
 export interface ProductOutboxRepositoryPort {
-  claimBatch(
-    request: ClaimProductOutboxBatch,
-  ): Promise<ClaimedProductOutboxEvent[]>;
+  claimBatch(request: ClaimProductOutboxBatch): Promise<ClaimedProductOutboxEvent[]>;
   markPublished(id: string, leaseOwner: string, publishedAt: Date): Promise<void>;
   markFailedAttempt(attempt: FailedProductOutboxAttempt): Promise<void>;
   replayFailed(id: string, nextAttemptAt: Date): Promise<void>;

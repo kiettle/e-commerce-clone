@@ -1,8 +1,7 @@
 export const PRODUCT_EVENT_TRANSPORT = Symbol('PRODUCT_EVENT_TRANSPORT');
 
 export interface ProductEvent {
-  id: string;
-  aggregateId: bigint;
+  eventId: string;
   eventType: string;
   schemaVersion: number;
   partitionKey: string;

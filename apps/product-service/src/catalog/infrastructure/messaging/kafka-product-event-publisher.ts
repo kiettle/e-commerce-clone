@@ -2,15 +2,13 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Kafka, Partitioners, Producer } from 'kafkajs';
 import {
-  ProductCreatedEvent,
-  ProductEventPublisherPort,
-} from '../../application/ports/product-event-publisher.port';
+  ProductEvent,
+  ProductEventTransportPort,
+} from '../../application/ports/product-event-transport.port';
 import { ProtobufProductEventSerializer } from './protobuf-product-event-serializer';
 
 @Injectable()
-export class KafkaProductEventPublisher
-  implements ProductEventPublisherPort, OnModuleDestroy
-{
+export class KafkaProductEventPublisher implements ProductEventTransportPort, OnModuleDestroy {
   private readonly logger = new Logger(KafkaProductEventPublisher.name);
   private readonly producer: Producer;
   private readonly topic: string;
@@ -21,9 +19,7 @@ export class KafkaProductEventPublisher
     configService: ConfigService,
     private readonly serializer: ProtobufProductEventSerializer,
   ) {
-    const brokers = (
-      configService.get<string>('KAFKA_BROKERS') ?? 'localhost:9094'
-    )
+    const brokers = (configService.get<string>('KAFKA_BROKERS') ?? 'localhost:9094')
       .split(',')
       .map((broker) => broker.trim())
       .filter(Boolean);
@@ -36,11 +32,12 @@ export class KafkaProductEventPublisher
     this.producer = kafka.producer({
       createPartitioner: Partitioners.LegacyPartitioner,
     });
-    this.topic =
-      configService.get<string>('PRODUCT_EVENTS_TOPIC') ?? 'product-events';
+    this.topic = configService.get<string>('PRODUCT_EVENTS_TOPIC') ?? 'product-events';
   }
 
-  async publishProductCreated(event: ProductCreatedEvent): Promise<void> {
+  async publish(event: ProductEvent): Promise<void> {
+    const value = this.serializer.encode(event);
+
     await this.ensureConnected();
 
     try {
@@ -48,8 +45,8 @@ export class KafkaProductEventPublisher
         topic: this.topic,
         messages: [
           {
-            key: event.productId.toString(),
-            value: this.serializer.encodeProductCreated(event),
+            key: event.partitionKey,
+            value,
           },
         ],
       });
