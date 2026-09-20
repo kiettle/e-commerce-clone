@@ -10,8 +10,12 @@ describe('CheckoutsGatewayController', () => {
     const user = { userId: 10 } as AuthenticatedUser;
     const response = {
       checkoutId,
+      cartId: 20,
       status: GatewayCheckoutStatus.Completed,
       orderId: 501,
+      lastError: null,
+      createdAt: '2026-09-16T08:00:00.000Z',
+      updatedAt: '2026-09-16T08:00:05.000Z',
     };
     const client = {
       getCheckoutStatus: vi.fn().mockResolvedValue(response),

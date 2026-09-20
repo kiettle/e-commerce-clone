@@ -22,5 +22,6 @@ export interface StockOperationItem {
 export interface InventoryRepositoryPort {
   initializeFromProductCreated(event: ProductCreatedStockEvent): Promise<void>;
   reserveStock(cartId: bigint, items: StockOperationItem[]): Promise<void>;
+  commitStock(cartId: bigint, items: StockOperationItem[]): Promise<void>;
   releaseStock(cartId: bigint, items: StockOperationItem[]): Promise<void>;
 }

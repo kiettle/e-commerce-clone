@@ -7,5 +7,6 @@ export interface StockOperationItem {
 
 export interface InventoryStockPort {
   reserveStock(cartId: bigint, items: StockOperationItem[]): Promise<void>;
+  commitStock(cartId: bigint, items: StockOperationItem[]): Promise<void>;
   releaseStock(cartId: bigint, items: StockOperationItem[]): Promise<void>;
 }

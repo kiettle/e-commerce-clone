@@ -14,12 +14,14 @@ enum InventoryStockStatus {
 
 enum StockReservationStatus {
   RESERVED
+  COMMITTED
   RELEASED
 }
 
 enum StockTransactionType {
   INITIALIZE
   RESERVE
+  COMMIT
   RELEASE
 }
 

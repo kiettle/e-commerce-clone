@@ -18,6 +18,7 @@ describe('GetCheckoutStatusUseCase', () => {
       startOrLoad: vi.fn(),
       markStockReserved: vi.fn(),
       markOrderConfirmed: vi.fn(),
+      markStockCommitted: vi.fn(),
       markCompensating: vi.fn(),
       markReconciliationRequired: vi.fn(),
       complete: vi.fn(),
@@ -69,6 +70,8 @@ describe('GetCheckoutStatusUseCase', () => {
       status: CheckoutStatus.Completed,
       orderId: 501n,
       reconciliationAction: null,
+      createdAt: new Date('2026-09-16T08:00:00.000Z'),
+      updatedAt: new Date('2026-09-16T08:00:05.000Z'),
       ...overrides,
     });
   }

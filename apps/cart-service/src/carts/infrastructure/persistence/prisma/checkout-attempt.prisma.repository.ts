@@ -179,6 +179,19 @@ export class PrismaCheckoutAttemptRepository
       {
         status: CheckoutStatus.OrderConfirmed,
         orderId,
+        reconciliationAction: ReconciliationAction.CommitStock,
+        lastError: null,
+        nextRetryAt: null,
+      },
+    );
+  }
+
+  async markStockCommitted(attemptId: string): Promise<CheckoutAttemptEntity> {
+    return this.transition(
+      attemptId,
+      ReconciliationAction.CommitStock,
+      {
+        status: CheckoutStatus.StockCommitted,
         reconciliationAction: ReconciliationAction.CompleteCart,
         lastError: null,
         nextRetryAt: null,
@@ -362,6 +375,8 @@ function toDomain(attempt: PrismaCheckoutAttempt): CheckoutAttemptEntity {
     lastError: attempt.lastError,
     reconciliationAction:
       attempt.reconciliationAction as ReconciliationAction | null,
+    createdAt: attempt.createdAt,
+    updatedAt: attempt.updatedAt,
   });
 }
 

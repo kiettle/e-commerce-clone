@@ -1,5 +1,6 @@
 import { Controller, Logger } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
+import { CommitStockUseCase } from '../../application/use-cases/commit-stock.use-case';
 import { ReleaseStockUseCase } from '../../application/use-cases/release-stock.use-case';
 import { ReserveStockUseCase } from '../../application/use-cases/reserve-stock.use-case';
 import { InventoryOperationError } from '../../domain/errors/inventory-operation.error';
@@ -24,6 +25,7 @@ export class InventoryGrpcController {
   constructor(
     private readonly reserveStockUseCase: ReserveStockUseCase,
     private readonly releaseStockUseCase: ReleaseStockUseCase,
+    private readonly commitStockUseCase: CommitStockUseCase,
   ) {}
 
   @GrpcMethod('InventoryService', 'ReserveStock')
@@ -41,6 +43,15 @@ export class InventoryGrpcController {
   ): Promise<StockOperationGrpcResponse> {
     return this.runStockOperation(() =>
       this.releaseStockUseCase.execute(toCommand(request)),
+    );
+  }
+
+  @GrpcMethod('InventoryService', 'CommitStock')
+  async commitStock(
+    request: StockOperationGrpcRequest,
+  ): Promise<StockOperationGrpcResponse> {
+    return this.runStockOperation(() =>
+      this.commitStockUseCase.execute(toCommand(request)),
     );
   }
 

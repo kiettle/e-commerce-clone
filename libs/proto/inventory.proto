@@ -8,6 +8,7 @@ option java_package = "inventory";
 service InventoryService {
   rpc ReserveStock (StockOperationRequest) returns (StockOperationResponse);
   rpc ReleaseStock (StockOperationRequest) returns (StockOperationResponse);
+  rpc CommitStock (StockOperationRequest) returns (StockOperationResponse);
 }
 
 message StockOperationRequest {

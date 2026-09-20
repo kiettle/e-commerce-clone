@@ -106,6 +106,15 @@ describe('OrdersGrpcController', () => {
     );
   });
 
+  it('maps malformed numeric input to INVALID_ARGUMENT before the use case', async () => {
+    await expectRpcCode(
+      controller.createOrder({ ...createRequest, cart_id: 'not-an-integer' }),
+      GrpcStatus.INVALID_ARGUMENT,
+    );
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(Logger.prototype.error).not.toHaveBeenCalled();
+  });
+
   it('maps checkout ID reuse with another hash to ALREADY_EXISTS', async () => {
     createOrder.mockRejectedValue(new CheckoutIdConflictError(checkoutId));
 

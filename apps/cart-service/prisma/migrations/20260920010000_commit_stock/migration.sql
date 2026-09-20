@@ -1,0 +1,2 @@
+ALTER TYPE "CheckoutStatus" ADD VALUE 'STOCK_COMMITTED';
+ALTER TYPE "ReconciliationAction" ADD VALUE 'COMMIT_STOCK';

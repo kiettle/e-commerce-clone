@@ -22,6 +22,8 @@ export interface CheckoutAttemptEntityProps {
   retryCount?: number;
   lastError?: string | null;
   reconciliationAction?: ReconciliationAction | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export class CheckoutAttemptEntity {
@@ -36,6 +38,8 @@ export class CheckoutAttemptEntity {
   readonly retryCount: number;
   readonly lastError: string | null;
   readonly reconciliationAction: ReconciliationAction | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 
   constructor(props: CheckoutAttemptEntityProps) {
     this.id = props.id;
@@ -49,5 +53,7 @@ export class CheckoutAttemptEntity {
     this.retryCount = props.retryCount ?? 0;
     this.lastError = props.lastError ?? null;
     this.reconciliationAction = props.reconciliationAction ?? null;
+    this.createdAt = props.createdAt;
+    this.updatedAt = props.updatedAt;
   }
 }

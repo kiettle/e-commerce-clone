@@ -6,6 +6,7 @@ import { CheckoutStatus } from '../../domain/enums/checkout-status.enum';
 import { ReconciliationAction } from '../../domain/enums/reconciliation-action.enum';
 import { CheckoutConflictError } from '../../domain/errors/checkout-conflict.error';
 import { CheckoutTerminalError } from '../../domain/errors/checkout-terminal.error';
+import { InventoryCommitFailedError } from '../../domain/errors/inventory-commit-failed.error';
 import { InventoryReleaseFailedError } from '../../domain/errors/inventory-release-failed.error';
 import { InventoryReservationFailedError } from '../../domain/errors/inventory-reservation-failed.error';
 import { OrderCreationFailedError } from '../../domain/errors/order-creation-failed.error';
@@ -65,6 +66,7 @@ describe('CheckoutCartUseCase', () => {
       startOrLoad: vi.fn(),
       markStockReserved: vi.fn(),
       markOrderConfirmed: vi.fn(),
+      markStockCommitted: vi.fn(),
       markCompensating: vi.fn(),
       markReconciliationRequired: vi.fn(),
       complete: vi.fn(),
@@ -72,6 +74,7 @@ describe('CheckoutCartUseCase', () => {
     };
     inventory = {
       reserveStock: vi.fn(),
+      commitStock: vi.fn(),
       releaseStock: vi.fn(),
     };
     orders = {
@@ -97,6 +100,11 @@ describe('CheckoutCartUseCase', () => {
     const orderConfirmed = attempt({
       status: CheckoutStatus.OrderConfirmed,
       orderId: 501n,
+      reconciliationAction: ReconciliationAction.CommitStock,
+    });
+    const stockCommitted = attempt({
+      status: CheckoutStatus.StockCommitted,
+      orderId: 501n,
       reconciliationAction: ReconciliationAction.CompleteCart,
     });
     attempts.findByUserAndKey.mockResolvedValue(null);
@@ -104,6 +112,7 @@ describe('CheckoutCartUseCase', () => {
     attempts.markStockReserved.mockResolvedValue(stockReserved);
     orders.createOrder.mockResolvedValue({ orderId: 501n, status: 'CREATED' });
     attempts.markOrderConfirmed.mockResolvedValue(orderConfirmed);
+    attempts.markStockCommitted.mockResolvedValue(stockCommitted);
     attempts.complete.mockResolvedValue(checkedOutCart);
 
     await expect(useCase.execute(command)).resolves.toEqual({
@@ -124,12 +133,17 @@ describe('CheckoutCartUseCase', () => {
       checkoutIdentity,
     );
     expect(attempts.markOrderConfirmed).toHaveBeenCalledWith(checkoutId, 501n);
+    expect(inventory.commitStock).toHaveBeenCalledWith(20n, stockItems);
+    expect(attempts.markStockCommitted).toHaveBeenCalledWith(checkoutId);
     expect(attempts.complete).toHaveBeenCalledWith(checkoutId, 501n);
     expect(attempts.startOrLoad).toHaveBeenCalledBefore(inventory.reserveStock);
     expect(attempts.markStockReserved).toHaveBeenCalledBefore(
       orders.createOrder,
     );
     expect(attempts.markOrderConfirmed).toHaveBeenCalledBefore(
+      inventory.commitStock,
+    );
+    expect(attempts.markStockCommitted).toHaveBeenCalledBefore(
       attempts.complete,
     );
   });
@@ -239,6 +253,59 @@ describe('CheckoutCartUseCase', () => {
     expect(inventory.releaseStock).not.toHaveBeenCalled();
   });
 
+  it('stores COMMIT_STOCK when the commit outcome is uncertain', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.OrderConfirmed,
+        orderId: 501n,
+        reconciliationAction: ReconciliationAction.CommitStock,
+      }),
+    );
+    inventory.commitStock.mockRejectedValue(
+      new InventoryCommitFailedError('Inventory timed out.', 'UNCERTAIN'),
+    );
+
+    await expect(useCase.execute(command)).resolves.toMatchObject({
+      outcome: 'PENDING',
+      checkoutId,
+    });
+    expect(attempts.markReconciliationRequired).toHaveBeenCalledWith(
+      checkoutId,
+      ReconciliationAction.CommitStock,
+      'Inventory timed out.',
+    );
+    expect(orders.createOrder).not.toHaveBeenCalled();
+    expect(orders.getOrderByCheckoutId).not.toHaveBeenCalled();
+    expect(inventory.releaseStock).not.toHaveBeenCalled();
+  });
+
+  it('retries stock commit without creating another order', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.ReconciliationRequired,
+        orderId: 501n,
+        reconciliationAction: ReconciliationAction.CommitStock,
+      }),
+    );
+    attempts.markStockCommitted.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.StockCommitted,
+        orderId: 501n,
+        reconciliationAction: ReconciliationAction.CompleteCart,
+      }),
+    );
+    attempts.complete.mockResolvedValue(checkedOutCart);
+
+    await expect(useCase.execute(command)).resolves.toMatchObject({
+      outcome: 'COMPLETED',
+      orderId: 501n,
+    });
+    expect(inventory.commitStock).toHaveBeenCalledOnce();
+    expect(orders.createOrder).not.toHaveBeenCalled();
+    expect(orders.getOrderByCheckoutId).not.toHaveBeenCalled();
+    expect(inventory.releaseStock).not.toHaveBeenCalled();
+  });
+
   it('resumes after a lost response by finding and completing the existing order', async () => {
     attempts.findByUserAndKey.mockResolvedValue(checkOrderAttempt());
     orders.getOrderByCheckoutId.mockResolvedValue({
@@ -248,9 +315,15 @@ describe('CheckoutCartUseCase', () => {
     const confirmed = attempt({
       status: CheckoutStatus.OrderConfirmed,
       orderId: 501n,
+      reconciliationAction: ReconciliationAction.CommitStock,
+    });
+    const committed = attempt({
+      status: CheckoutStatus.StockCommitted,
+      orderId: 501n,
       reconciliationAction: ReconciliationAction.CompleteCart,
     });
     attempts.markOrderConfirmed.mockResolvedValue(confirmed);
+    attempts.markStockCommitted.mockResolvedValue(committed);
     attempts.complete.mockResolvedValue(checkedOutCart);
 
     await expect(useCase.execute(command)).resolves.toMatchObject({
@@ -258,6 +331,7 @@ describe('CheckoutCartUseCase', () => {
       orderId: 501n,
     });
     expect(orders.createOrder).not.toHaveBeenCalled();
+    expect(inventory.commitStock).toHaveBeenCalledWith(20n, stockItems);
     expect(inventory.releaseStock).not.toHaveBeenCalled();
   });
 
@@ -270,9 +344,15 @@ describe('CheckoutCartUseCase', () => {
     const confirmed = attempt({
       status: CheckoutStatus.OrderConfirmed,
       orderId: 502n,
+      reconciliationAction: ReconciliationAction.CommitStock,
+    });
+    const committed = attempt({
+      status: CheckoutStatus.StockCommitted,
+      orderId: 502n,
       reconciliationAction: ReconciliationAction.CompleteCart,
     });
     attempts.markOrderConfirmed.mockResolvedValue(confirmed);
+    attempts.markStockCommitted.mockResolvedValue(committed);
     attempts.complete.mockResolvedValue(checkedOutCart);
 
     await expect(useCase.execute(command)).resolves.toMatchObject({
@@ -282,10 +362,10 @@ describe('CheckoutCartUseCase', () => {
     expect(orders.createOrder).toHaveBeenCalledTimes(1);
   });
 
-  it('stores COMPLETE_CART when local completion fails and keeps stock reserved', async () => {
+  it('stores COMPLETE_CART when local completion fails after stock is committed', async () => {
     attempts.findByUserAndKey.mockResolvedValue(
       attempt({
-        status: CheckoutStatus.OrderConfirmed,
+        status: CheckoutStatus.StockCommitted,
         orderId: 501n,
         reconciliationAction: ReconciliationAction.CompleteCart,
       }),
@@ -415,6 +495,8 @@ describe('CheckoutCartUseCase', () => {
       ],
       status: CheckoutStatus.Started,
       reconciliationAction: ReconciliationAction.ReserveStock,
+      createdAt: new Date('2026-09-16T08:00:00.000Z'),
+      updatedAt: new Date('2026-09-16T08:00:05.000Z'),
       ...overrides,
     });
   }

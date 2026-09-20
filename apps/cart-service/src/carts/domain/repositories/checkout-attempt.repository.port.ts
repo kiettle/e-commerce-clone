@@ -22,6 +22,7 @@ export interface CheckoutAttemptRepositoryPort {
     attemptId: string,
     orderId: bigint,
   ): Promise<CheckoutAttemptEntity>;
+  markStockCommitted(attemptId: string): Promise<CheckoutAttemptEntity>;
   markCompensating(
     attemptId: string,
     error: string,

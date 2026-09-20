@@ -51,12 +51,17 @@ export class OrdersGrpcController {
 
     try {
       order = await this.createOrderUseCase.execute({
-        userId: BigInt(request.user_id),
+        userId: parseInteger(request.user_id, 'user_id'),
         checkoutId: request.checkout_id,
-        cartId: request.cart_id ? BigInt(request.cart_id) : undefined,
+        cartId: request.cart_id
+          ? parseInteger(request.cart_id, 'cart_id')
+          : undefined,
         requestHash: request.request_hash,
         items: request.items.map((item) => ({
-          productSkuId: BigInt(item.product_sku_id),
+          productSkuId: parseInteger(
+            item.product_sku_id,
+            'product_sku_id',
+          ),
           productName: item.product_name,
           price: item.price,
           quantity: item.quantity,
@@ -164,4 +169,12 @@ function toGrpcResponse(order: {
 
 function createRpcException(code: GrpcStatus, message: string): RpcException {
   return new RpcException({ code, message });
+}
+
+function parseInteger(value: string, field: string): bigint {
+  try {
+    return BigInt(value);
+  } catch {
+    throw new InvalidOrderError(`${field} must be a valid integer.`);
+  }
 }

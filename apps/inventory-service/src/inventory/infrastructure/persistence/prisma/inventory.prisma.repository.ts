@@ -158,31 +158,43 @@ export class PrismaInventoryRepository implements InventoryRepositoryPort {
     items: StockOperationItem[],
   ): Promise<void> {
     await this.prisma.$transaction(async (transaction) => {
-      const reservations = await transaction.stockReservation.findMany({
-        where: {
-          cartId,
-          productSkuId: {
-            in: items.map((item) => item.productSkuId),
-          },
-        },
-      });
+      await lockReservations(transaction, cartId, items);
+      const reservations = await this.findReservations(
+        transaction,
+        cartId,
+        items,
+      );
       const reservationBySkuId = toReservationMap(reservations);
 
       for (const item of items) {
-        const reservation = reservationBySkuId.get(item.productSkuId.toString());
+        const reservation = reservationBySkuId.get(
+          item.productSkuId.toString(),
+        );
 
         if (!reservation) {
           throw new ReservationNotFoundError(item.productSkuId);
-        }
-
-        if (reservation.status === StockReservationStatus.Released) {
-          continue;
         }
 
         if (reservation.quantity !== item.quantity) {
           throw new InvalidStockOperationError(
             'Release quantity must match reserved quantity.',
           );
+        }
+
+        if (reservation.status === StockReservationStatus.Committed) {
+          throw new InvalidStockOperationError(
+            'Committed reservations cannot be released.',
+          );
+        }
+      }
+
+      for (const item of items) {
+        const reservation = reservationBySkuId.get(
+          item.productSkuId.toString(),
+        )!;
+
+        if (reservation.status === StockReservationStatus.Released) {
+          continue;
         }
 
         const updateResult = await transaction.inventoryStock.updateMany({
@@ -226,6 +238,94 @@ export class PrismaInventoryRepository implements InventoryRepositoryPort {
             cartId,
             productSkuId: item.productSkuId,
             type: StockTransactionType.Release,
+            quantity: item.quantity,
+          },
+        });
+      }
+    });
+  }
+
+  async commitStock(
+    cartId: bigint,
+    items: StockOperationItem[],
+  ): Promise<void> {
+    await this.prisma.$transaction(async (transaction) => {
+      await lockReservations(transaction, cartId, items);
+      const reservations = await this.findReservations(
+        transaction,
+        cartId,
+        items,
+      );
+      const reservationBySkuId = toReservationMap(reservations);
+
+      for (const item of items) {
+        const reservation = reservationBySkuId.get(
+          item.productSkuId.toString(),
+        );
+
+        if (!reservation) {
+          throw new ReservationNotFoundError(item.productSkuId);
+        }
+
+        if (reservation.quantity !== item.quantity) {
+          throw new InvalidStockOperationError(
+            'Commit quantity must match reserved quantity.',
+          );
+        }
+
+        if (reservation.status === StockReservationStatus.Released) {
+          throw new InvalidStockOperationError(
+            'Released reservations cannot be committed.',
+          );
+        }
+      }
+
+      for (const item of items) {
+        const reservation = reservationBySkuId.get(
+          item.productSkuId.toString(),
+        )!;
+
+        if (reservation.status === StockReservationStatus.Committed) {
+          continue;
+        }
+
+        const updateResult = await transaction.inventoryStock.updateMany({
+          where: {
+            productSkuId: item.productSkuId,
+            reservedQuantity: {
+              gte: item.quantity,
+            },
+          },
+          data: {
+            reservedQuantity: {
+              decrement: item.quantity,
+            },
+          },
+        });
+
+        if (updateResult.count !== 1) {
+          throw new InvalidStockOperationError(
+            'Reserved quantity is lower than commit quantity.',
+          );
+        }
+
+        await transaction.stockReservation.update({
+          where: {
+            cartId_productSkuId: {
+              cartId,
+              productSkuId: item.productSkuId,
+            },
+          },
+          data: {
+            status: StockReservationStatus.Committed,
+          },
+        });
+
+        await transaction.stockTransaction.create({
+          data: {
+            cartId,
+            productSkuId: item.productSkuId,
+            type: StockTransactionType.Commit,
             quantity: item.quantity,
           },
         });
@@ -278,6 +378,36 @@ export class PrismaInventoryRepository implements InventoryRepositoryPort {
       },
     });
   }
+
+  private findReservations(
+    transaction: TransactionClient,
+    cartId: bigint,
+    items: StockOperationItem[],
+  ): Promise<StockReservation[]> {
+    return transaction.stockReservation.findMany({
+      where: {
+        cartId,
+        productSkuId: {
+          in: items.map((item) => item.productSkuId),
+        },
+      },
+    });
+  }
+}
+
+async function lockReservations(
+  transaction: TransactionClient,
+  cartId: bigint,
+  items: StockOperationItem[],
+): Promise<void> {
+  await transaction.$queryRaw`
+    SELECT "id"
+    FROM "stock_reservations"
+    WHERE "cart_id" = ${cartId}
+      AND "product_sku_id" IN (${Prisma.join(items.map((item) => item.productSkuId))})
+    ORDER BY "product_sku_id"
+    FOR UPDATE
+  `;
 }
 
 function toStockMap(stocks: InventoryStock[]): Map<string, InventoryStock> {

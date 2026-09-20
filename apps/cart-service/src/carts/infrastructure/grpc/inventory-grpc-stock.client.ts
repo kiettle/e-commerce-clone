@@ -7,6 +7,7 @@ import {
 } from '@nestjs/microservices';
 import { join } from 'node:path';
 import { Observable, firstValueFrom } from 'rxjs';
+import { InventoryCommitFailedError } from '../../domain/errors/inventory-commit-failed.error';
 import { InventoryReleaseFailedError } from '../../domain/errors/inventory-release-failed.error';
 import { InventoryReservationFailedError } from '../../domain/errors/inventory-reservation-failed.error';
 import {
@@ -36,6 +37,9 @@ interface InventoryGrpcService {
     request: StockOperationGrpcRequest,
   ): Observable<StockOperationGrpcResponse>;
   releaseStock(
+    request: StockOperationGrpcRequest,
+  ): Observable<StockOperationGrpcResponse>;
+  commitStock(
     request: StockOperationGrpcRequest,
   ): Observable<StockOperationGrpcResponse>;
 }
@@ -105,6 +109,32 @@ export class InventoryGrpcStockClient
       }
 
       throw new InventoryReleaseFailedError(
+        'Inventory service request failed.',
+        'UNCERTAIN',
+      );
+    }
+  }
+
+  async commitStock(
+    cartId: bigint,
+    items: StockOperationItem[],
+  ): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.getInventoryService().commitStock(toGrpcRequest(cartId, items)),
+      );
+
+      if (!response.success) {
+        throw new InventoryCommitFailedError(
+          response.message ?? 'Inventory commit failed.',
+        );
+      }
+    } catch (error) {
+      if (error instanceof InventoryCommitFailedError) {
+        throw error;
+      }
+
+      throw new InventoryCommitFailedError(
         'Inventory service request failed.',
         'UNCERTAIN',
       );

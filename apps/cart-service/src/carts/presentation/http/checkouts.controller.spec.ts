@@ -29,6 +29,8 @@ describe('CheckoutsController', () => {
         itemsSnapshot: [],
         status: CheckoutStatus.Failed,
         lastError: 'Sensitive database failure details.',
+        createdAt: new Date('2026-09-16T08:00:00.000Z'),
+        updatedAt: new Date('2026-09-16T08:00:05.000Z'),
       }),
     );
 
@@ -36,8 +38,12 @@ describe('CheckoutsController', () => {
       controller.getCheckoutStatus('10', checkoutId),
     ).resolves.toEqual({
       checkoutId,
+      cartId: 20,
       status: CheckoutStatus.Failed,
+      orderId: null,
       lastError: 'Checkout failed.',
+      createdAt: '2026-09-16T08:00:00.000Z',
+      updatedAt: '2026-09-16T08:00:05.000Z',
     });
     expect(useCase.execute).toHaveBeenCalledWith(10n, checkoutId);
   });

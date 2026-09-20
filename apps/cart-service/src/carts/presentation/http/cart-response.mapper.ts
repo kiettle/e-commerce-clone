@@ -38,9 +38,12 @@ export interface CheckoutPendingResponse {
 
 export interface CheckoutStatusResponse {
   checkoutId: string;
+  cartId: number;
   status: CheckoutStatus;
-  orderId?: number;
-  lastError?: string;
+  orderId: number | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export function toCartResponse(cart: CartEntity): CartResponse {
@@ -58,11 +61,13 @@ export function toCheckoutStatusResponse(
 ): CheckoutStatusResponse {
   return {
     checkoutId: attempt.id,
+    cartId: Number(attempt.cartId),
     status: attempt.status,
-    ...(attempt.orderId == null ? {} : { orderId: Number(attempt.orderId) }),
-    ...(attempt.lastError == null
-      ? {}
-      : { lastError: publicCheckoutError(attempt.status) }),
+    orderId: attempt.orderId == null ? null : Number(attempt.orderId),
+    lastError:
+      attempt.lastError == null ? null : publicCheckoutError(attempt.status),
+    createdAt: attempt.createdAt.toISOString(),
+    updatedAt: attempt.updatedAt.toISOString(),
   };
 }
 

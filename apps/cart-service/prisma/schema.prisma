@@ -17,6 +17,7 @@ enum CheckoutStatus {
   STARTED
   STOCK_RESERVED
   ORDER_CONFIRMED
+  STOCK_COMMITTED
   COMPLETED
   COMPENSATING
   FAILED
@@ -26,6 +27,7 @@ enum CheckoutStatus {
 enum ReconciliationAction {
   RESERVE_STOCK
   CHECK_ORDER
+  COMMIT_STOCK
   RELEASE_STOCK
   COMPLETE_CART
 }

@@ -12,6 +12,7 @@ export enum GatewayCheckoutStatus {
   Started = 'STARTED',
   StockReserved = 'STOCK_RESERVED',
   OrderConfirmed = 'ORDER_CONFIRMED',
+  StockCommitted = 'STOCK_COMMITTED',
   Completed = 'COMPLETED',
   Compensating = 'COMPENSATING',
   Failed = 'FAILED',
@@ -115,15 +116,24 @@ export class CheckoutStatusResponseDto {
   @ApiProperty({ example: '018f47a1-7b72-4c7f-8c52-f06612de3377' })
   checkoutId!: string;
 
+  @ApiProperty({ example: 1 })
+  cartId!: number;
+
   @ApiProperty({
     enum: GatewayCheckoutStatus,
     example: GatewayCheckoutStatus.ReconciliationRequired,
   })
   status!: GatewayCheckoutStatus;
 
-  @ApiPropertyOptional({ example: 501 })
-  orderId?: number;
+  @ApiProperty({ example: 501, nullable: true })
+  orderId!: number | null;
 
-  @ApiPropertyOptional({ example: 'Checkout is awaiting recovery.' })
-  lastError?: string;
+  @ApiProperty({ example: 'Checkout is awaiting recovery.', nullable: true })
+  lastError!: string | null;
+
+  @ApiProperty({ example: '2026-09-16T08:00:00.000Z', format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ example: '2026-09-16T08:00:05.000Z', format: 'date-time' })
+  updatedAt!: string;
 }

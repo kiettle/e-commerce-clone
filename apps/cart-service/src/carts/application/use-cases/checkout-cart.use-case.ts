@@ -83,6 +83,8 @@ export class CheckoutCartUseCase {
         return this.reserveStock(attempt);
       case ReconciliationAction.CheckOrder:
         return this.checkOrder(attempt);
+      case ReconciliationAction.CommitStock:
+        return this.commitStock(attempt);
       case ReconciliationAction.CompleteCart:
         return this.completeCart(attempt);
       case ReconciliationAction.ReleaseStock:
@@ -223,13 +225,40 @@ export class CheckoutCartUseCase {
     return this.resume(updatedAttempt);
   }
 
+  private async commitStock(
+    attempt: CheckoutAttemptEntity,
+  ): Promise<CheckoutCartResult> {
+    if (attempt.orderId == null) {
+      await this.attempts.markReconciliationRequired(
+        attempt.id,
+        ReconciliationAction.CommitStock,
+        'Checkout attempt is missing its order ID.',
+      );
+      return pending(attempt.id);
+    }
+
+    try {
+      await this.inventory.commitStock(attempt.cartId, toStockItems(attempt));
+    } catch (error) {
+      await this.attempts.markReconciliationRequired(
+        attempt.id,
+        ReconciliationAction.CommitStock,
+        errorMessage(error),
+      );
+      return pending(attempt.id);
+    }
+
+    const committed = await this.attempts.markStockCommitted(attempt.id);
+    return this.resume(committed);
+  }
+
   private async completeCart(
     attempt: CheckoutAttemptEntity,
   ): Promise<CheckoutCartResult> {
     if (attempt.orderId == null) {
       await this.attempts.markReconciliationRequired(
         attempt.id,
-        ReconciliationAction.CheckOrder,
+        ReconciliationAction.CompleteCart,
         'Checkout attempt is missing its order ID.',
       );
       return pending(attempt.id);

@@ -11,6 +11,7 @@ describe('ReleaseStockUseCase', () => {
     inventory = {
       initializeFromProductCreated: vi.fn(),
       reserveStock: vi.fn(),
+      commitStock: vi.fn(),
       releaseStock: vi.fn(),
     };
     useCase = new ReleaseStockUseCase(inventory);

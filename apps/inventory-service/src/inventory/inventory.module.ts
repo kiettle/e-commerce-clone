@@ -4,6 +4,7 @@ import {
   InventoryRepositoryPort,
 } from './domain/repositories/inventory.repository.port';
 import { HandleProductCreatedUseCase } from './application/use-cases/handle-product-created.use-case';
+import { CommitStockUseCase } from './application/use-cases/commit-stock.use-case';
 import { ReleaseStockUseCase } from './application/use-cases/release-stock.use-case';
 import { ReserveStockUseCase } from './application/use-cases/reserve-stock.use-case';
 import { KafkaProductEventConsumer } from './infrastructure/messaging/kafka-product-event.consumer';
@@ -38,6 +39,12 @@ import { InventoryGrpcController } from './presentation/grpc/inventory.grpc.cont
       provide: ReleaseStockUseCase,
       useFactory: (inventory: InventoryRepositoryPort) =>
         new ReleaseStockUseCase(inventory),
+      inject: [INVENTORY_REPOSITORY],
+    },
+    {
+      provide: CommitStockUseCase,
+      useFactory: (inventory: InventoryRepositoryPort) =>
+        new CommitStockUseCase(inventory),
       inject: [INVENTORY_REPOSITORY],
     },
   ],

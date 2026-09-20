@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CheckoutStatus } from '../../../domain/enums/checkout-status.enum';
+import { ReconciliationAction } from '../../../domain/enums/reconciliation-action.enum';
 import { CheckoutConflictError } from '../../../domain/errors/checkout-conflict.error';
 import { PrismaCheckoutAttemptRepository } from './checkout-attempt.prisma.repository';
 import { PrismaService } from './prisma.service';
@@ -54,6 +56,75 @@ describe('PrismaCheckoutAttemptRepository startOrLoad', () => {
     });
   });
 });
+
+describe('PrismaCheckoutAttemptRepository successful transitions', () => {
+  it('moves an order-confirmed attempt to COMMIT_STOCK', async () => {
+    const prisma = transitionPrisma(
+      databaseAttempt({
+        status: CheckoutStatus.OrderConfirmed,
+        orderId: 501n,
+        reconciliationAction: ReconciliationAction.CommitStock,
+      }),
+    );
+    const repository = new PrismaCheckoutAttemptRepository(
+      prisma as unknown as PrismaService,
+    );
+
+    await repository.markOrderConfirmed(
+      '018f47a1-7b72-4c7f-8c52-f06612de3377',
+      501n,
+    );
+
+    expect(prisma.checkoutAttempt.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: '018f47a1-7b72-4c7f-8c52-f06612de3377',
+        reconciliationAction: ReconciliationAction.CheckOrder,
+        status: { notIn: [CheckoutStatus.Completed, CheckoutStatus.Failed] },
+      },
+      data: expect.objectContaining({
+        status: CheckoutStatus.OrderConfirmed,
+        orderId: 501n,
+        reconciliationAction: ReconciliationAction.CommitStock,
+      }),
+    });
+  });
+
+  it('moves a committed attempt to COMPLETE_CART', async () => {
+    const prisma = transitionPrisma(
+      databaseAttempt({
+        status: CheckoutStatus.StockCommitted,
+        orderId: 501n,
+        reconciliationAction: ReconciliationAction.CompleteCart,
+      }),
+    );
+    const repository = new PrismaCheckoutAttemptRepository(
+      prisma as unknown as PrismaService,
+    );
+
+    await repository.markStockCommitted('018f47a1-7b72-4c7f-8c52-f06612de3377');
+
+    expect(prisma.checkoutAttempt.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: '018f47a1-7b72-4c7f-8c52-f06612de3377',
+        reconciliationAction: ReconciliationAction.CommitStock,
+        status: { notIn: [CheckoutStatus.Completed, CheckoutStatus.Failed] },
+      },
+      data: expect.objectContaining({
+        status: CheckoutStatus.StockCommitted,
+        reconciliationAction: ReconciliationAction.CompleteCart,
+      }),
+    });
+  });
+});
+
+function transitionPrisma(attempt: ReturnType<typeof databaseAttempt>) {
+  return {
+    checkoutAttempt: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findUniqueOrThrow: vi.fn().mockResolvedValue(attempt),
+    },
+  };
+}
 
 function databaseAttempt(overrides: Record<string, unknown> = {}) {
   return {

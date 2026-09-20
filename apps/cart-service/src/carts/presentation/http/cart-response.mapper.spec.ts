@@ -20,15 +20,20 @@ describe('toCheckoutStatusResponse', () => {
         orderId: 501n,
         lastError: 'connection reset at postgres://internal-host/cart_db',
         reconciliationAction: ReconciliationAction.CompleteCart,
+        createdAt: new Date('2026-09-16T08:00:00.000Z'),
+        updatedAt: new Date('2026-09-16T08:00:05.000Z'),
       }),
       { leaseOwner: 'worker-1' },
     );
 
     expect(toCheckoutStatusResponse(attempt)).toEqual({
       checkoutId,
+      cartId: 20,
       status: CheckoutStatus.ReconciliationRequired,
       orderId: 501,
       lastError: 'Checkout is awaiting recovery.',
+      createdAt: '2026-09-16T08:00:00.000Z',
+      updatedAt: '2026-09-16T08:00:05.000Z',
     });
     expect(JSON.stringify(toCheckoutStatusResponse(attempt))).not.toContain(
       'internal-host',
@@ -37,7 +42,7 @@ describe('toCheckoutStatusResponse', () => {
     expect(toCheckoutStatusResponse(attempt)).not.toHaveProperty('requestHash');
   });
 
-  it('omits optional order and error fields when they are absent', () => {
+  it('returns null order and error fields when they are absent', () => {
     const attempt = new CheckoutAttemptEntity({
       id: checkoutId,
       userId: 10n,
@@ -47,11 +52,18 @@ describe('toCheckoutStatusResponse', () => {
       itemsSnapshot: [],
       status: CheckoutStatus.Started,
       reconciliationAction: ReconciliationAction.ReserveStock,
+      createdAt: new Date('2026-09-16T08:00:00.000Z'),
+      updatedAt: new Date('2026-09-16T08:00:00.000Z'),
     });
 
     expect(toCheckoutStatusResponse(attempt)).toEqual({
       checkoutId,
+      cartId: 20,
       status: CheckoutStatus.Started,
+      orderId: null,
+      lastError: null,
+      createdAt: '2026-09-16T08:00:00.000Z',
+      updatedAt: '2026-09-16T08:00:00.000Z',
     });
   });
 });
