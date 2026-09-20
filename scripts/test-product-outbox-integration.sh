@@ -292,6 +292,7 @@ env \
     --no-file-parallelism \
     apps/product-service/src/catalog/infrastructure/persistence/prisma/product.prisma.repository.integration.spec.ts \
     apps/product-service/src/catalog/infrastructure/persistence/prisma/product-outbox.prisma.repository.integration.spec.ts \
+    apps/product-service/src/flash-sales/infrastructure/persistence/prisma/flash-sale.schema.integration.spec.ts \
     apps/inventory-service/src/inventory/infrastructure/persistence/prisma/inventory.prisma.repository.integration.spec.ts
 
 db_execute postgres-product "$PRODUCT_DATABASE_NAME" \
