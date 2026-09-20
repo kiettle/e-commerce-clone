@@ -80,6 +80,22 @@ export class FlashSalesGatewayController {
     return this.catalogClient.cancelFlashSale(flashSaleId);
   }
 
+  @Post(':flashSaleId/schedule')
+  @ApiOperation({ summary: 'Schedule a flash-sale draft atomically' })
+  @ApiParam({ name: 'flashSaleId', example: 1, type: Number })
+  @ApiOkResponse({ type: FlashSaleResponseDto })
+  @ApiBadRequestResponse({ description: 'Invalid scheduling lead time or duration.' })
+  @ApiNotFoundResponse({ description: 'Flash sale not found.' })
+  @ApiConflictResponse({
+    description:
+      'Sale is not a draft, a product or SKU is inactive, FLASH_SALE_PRICE_CHANGED, or the sale overlaps.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid token.' })
+  @ApiForbiddenResponse({ description: 'Administrator role required.' })
+  schedule(@Param('flashSaleId', ParseIntPipe) flashSaleId: number): Promise<FlashSaleResponseDto> {
+    return this.catalogClient.scheduleFlashSale(flashSaleId);
+  }
+
   @Get(':flashSaleId')
   @ApiOperation({ summary: 'Get a flash sale, including cancelled sales' })
   @ApiParam({ name: 'flashSaleId', example: 1, type: Number })

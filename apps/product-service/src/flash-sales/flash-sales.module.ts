@@ -3,6 +3,7 @@ import { CatalogModule } from '../catalog/catalog.module';
 import { CancelFlashSaleUseCase } from './application/use-cases/cancel-flash-sale.use-case';
 import { CreateFlashSaleUseCase } from './application/use-cases/create-flash-sale.use-case';
 import { GetFlashSaleUseCase } from './application/use-cases/get-flash-sale.use-case';
+import { ScheduleFlashSaleUseCase } from './application/use-cases/schedule-flash-sale.use-case';
 import { UpdateFlashSaleUseCase } from './application/use-cases/update-flash-sale.use-case';
 import {
   FLASH_SALE_REPOSITORY,
@@ -38,6 +39,11 @@ import { FlashSalesController } from './presentation/http/flash-sales.controller
     {
       provide: GetFlashSaleUseCase,
       useFactory: (flashSales: FlashSaleRepositoryPort) => new GetFlashSaleUseCase(flashSales),
+      inject: [FLASH_SALE_REPOSITORY],
+    },
+    {
+      provide: ScheduleFlashSaleUseCase,
+      useFactory: (flashSales: FlashSaleRepositoryPort) => new ScheduleFlashSaleUseCase(flashSales),
       inject: [FLASH_SALE_REPOSITORY],
     },
   ],

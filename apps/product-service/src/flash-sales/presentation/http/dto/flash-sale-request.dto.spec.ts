@@ -2,10 +2,7 @@ import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { describe, expect, it } from 'vitest';
-import {
-  CreateFlashSaleRequestDto,
-  UpdateFlashSaleRequestDto,
-} from './flash-sale-request.dto';
+import { CreateFlashSaleRequestDto, UpdateFlashSaleRequestDto } from './flash-sale-request.dto';
 
 describe('CreateFlashSaleRequestDto', () => {
   it('does not accept a client-supplied original price', async () => {

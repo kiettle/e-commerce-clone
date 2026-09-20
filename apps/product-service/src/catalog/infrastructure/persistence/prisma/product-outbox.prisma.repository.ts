@@ -35,12 +35,15 @@ export class PrismaProductOutboxRepository implements ProductOutboxRepositoryPor
         WITH claimable AS MATERIALIZED (
           SELECT "id"
           FROM "product_outbox_events"
-          WHERE (
-            "status" = 'PENDING'::"ProductOutboxStatus"
-            AND "next_attempt_at" <= ${request.now}
-          ) OR (
-            "status" = 'PROCESSING'::"ProductOutboxStatus"
-            AND "lease_until" <= ${request.now}
+          WHERE "aggregate_type" = 'PRODUCT'
+          AND (
+            (
+              "status" = 'PENDING'::"ProductOutboxStatus"
+              AND "next_attempt_at" <= ${request.now}
+            ) OR (
+              "status" = 'PROCESSING'::"ProductOutboxStatus"
+              AND "lease_until" <= ${request.now}
+            )
           )
           ORDER BY "created_at" ASC, "id" ASC
           FOR UPDATE SKIP LOCKED

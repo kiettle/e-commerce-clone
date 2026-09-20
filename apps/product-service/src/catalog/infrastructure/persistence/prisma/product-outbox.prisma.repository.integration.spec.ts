@@ -128,6 +128,15 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
     expect(claimed.map((event) => event.id)).toEqual([eventId(1)]);
   });
 
+  it('does not claim events owned by another aggregate publisher', async () => {
+    await insertEvent({ id: eventId(1), aggregateType: 'FLASH_SALE' });
+
+    await expect(repository.claimBatch(claimRequest('worker-a'))).resolves.toEqual([]);
+    await expect(
+      prisma.productOutboxEvent.findUniqueOrThrow({ where: { id: eventId(1) } }),
+    ).resolves.toMatchObject({ status: ProductOutboxStatus.Pending });
+  });
+
   it('claims events in created-at and ID order', async () => {
     const sameTime = new Date('2026-09-20T10:00:02.000Z');
     await insertEvent({ id: eventId(3), createdAt: sameTime });
@@ -402,13 +411,14 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
       lastError: string | null;
       attemptCount: number;
       createdAt: Date;
+      aggregateType: string;
     }> = {},
   ) {
     const id = values.id ?? eventId(1);
     return prisma.productOutboxEvent.create({
       data: {
         id,
-        aggregateType: 'PRODUCT',
+        aggregateType: values.aggregateType ?? 'PRODUCT',
         aggregateId: BigInt(id.slice(-12)),
         aggregateVersion: 1,
         eventType: 'PRODUCT_CREATED',

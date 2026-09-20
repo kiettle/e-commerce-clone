@@ -126,6 +126,15 @@ export class CatalogGatewayClient {
     });
   }
 
+  scheduleFlashSale(flashSaleId: number): Promise<FlashSaleResponseDto> {
+    return this.httpClient.request<FlashSaleResponseDto>({
+      serviceName: 'product-service',
+      baseUrl: this.getProductServiceUrl(),
+      path: `/api/flash-sales/${flashSaleId}/schedule`,
+      method: 'POST',
+    });
+  }
+
   private getProductServiceUrl(): string {
     const explicitUrl = this.configService.get<string>('PRODUCT_SERVICE_URL');
 

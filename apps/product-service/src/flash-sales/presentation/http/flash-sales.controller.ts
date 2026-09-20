@@ -14,9 +14,14 @@ import {
 import { CancelFlashSaleUseCase } from '../../application/use-cases/cancel-flash-sale.use-case';
 import { CreateFlashSaleUseCase } from '../../application/use-cases/create-flash-sale.use-case';
 import { GetFlashSaleUseCase } from '../../application/use-cases/get-flash-sale.use-case';
+import { ScheduleFlashSaleUseCase } from '../../application/use-cases/schedule-flash-sale.use-case';
 import { UpdateFlashSaleUseCase } from '../../application/use-cases/update-flash-sale.use-case';
 import { FlashSaleNotDraftError } from '../../domain/errors/flash-sale-not-draft.error';
 import { FlashSaleNotFoundError } from '../../domain/errors/flash-sale-not-found.error';
+import { FlashSaleOverlapError } from '../../domain/errors/flash-sale-overlap.error';
+import { FlashSalePriceChangedError } from '../../domain/errors/flash-sale-price-changed.error';
+import { FlashSaleProductInactiveError } from '../../domain/errors/flash-sale-product-inactive.error';
+import { FlashSaleScheduleTimeError } from '../../domain/errors/flash-sale-schedule-time.error';
 import { FlashSaleSkuInactiveError } from '../../domain/errors/flash-sale-sku-inactive.error';
 import { FlashSaleSkuNotFoundError } from '../../domain/errors/flash-sale-sku-not-found.error';
 import { InvalidFlashSaleError } from '../../domain/errors/invalid-flash-sale.error';
@@ -30,6 +35,7 @@ export class FlashSalesController {
     private readonly updateFlashSale: UpdateFlashSaleUseCase,
     private readonly cancelFlashSale: CancelFlashSaleUseCase,
     private readonly getFlashSale: GetFlashSaleUseCase,
+    private readonly scheduleFlashSale: ScheduleFlashSaleUseCase,
   ) {}
 
   @Post()
@@ -87,6 +93,17 @@ export class FlashSalesController {
     }
   }
 
+  @Post(':flashSaleId/schedule')
+  async schedule(
+    @Param('flashSaleId', ParseIntPipe) flashSaleId: number,
+  ): Promise<FlashSaleResponse> {
+    try {
+      return toFlashSaleResponse(await this.scheduleFlashSale.execute(BigInt(flashSaleId)));
+    } catch (error) {
+      throw mapFlashSaleError(error);
+    }
+  }
+
   @Get(':flashSaleId')
   async get(@Param('flashSaleId', ParseIntPipe) flashSaleId: number): Promise<FlashSaleResponse> {
     try {
@@ -101,10 +118,16 @@ function mapFlashSaleError(error: unknown): Error {
   if (error instanceof FlashSaleNotFoundError || error instanceof FlashSaleSkuNotFoundError) {
     return new NotFoundException(error.message);
   }
-  if (error instanceof FlashSaleNotDraftError) {
+  if (
+    error instanceof FlashSaleNotDraftError ||
+    error instanceof FlashSaleOverlapError ||
+    error instanceof FlashSalePriceChangedError ||
+    error instanceof FlashSaleProductInactiveError ||
+    error instanceof FlashSaleSkuInactiveError
+  ) {
     return new ConflictException(error.message);
   }
-  if (error instanceof InvalidFlashSaleError || error instanceof FlashSaleSkuInactiveError) {
+  if (error instanceof InvalidFlashSaleError || error instanceof FlashSaleScheduleTimeError) {
     return new BadRequestException(error.message);
   }
   return error instanceof Error ? error : new Error('Unknown flash sale error.');

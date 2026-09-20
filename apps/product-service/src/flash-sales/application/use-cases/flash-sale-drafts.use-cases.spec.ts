@@ -27,6 +27,7 @@ describe('flash-sale draft use cases', () => {
       findById: vi.fn().mockResolvedValue(draftSale()),
       replaceDraft: vi.fn().mockImplementation(async (flashSale) => flashSale),
       cancelDraft: vi.fn().mockResolvedValue(cancelledSale()),
+      scheduleDraft: vi.fn(),
     };
   });
 
