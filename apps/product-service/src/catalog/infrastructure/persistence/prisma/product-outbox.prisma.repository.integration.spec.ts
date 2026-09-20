@@ -238,6 +238,102 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
     });
   });
 
+  it('resets retry state while preserving a failed event envelope', async () => {
+    const original = await insertEvent({
+      id: eventId(1),
+      status: ProductOutboxStatus.Failed,
+      attemptCount: 5,
+      nextAttemptAt: null,
+      lastError: 'Stored payload was invalid.',
+      leaseOwner: 'stale-worker',
+      leaseUntil: dueAt,
+      publishedAt: dueAt,
+    });
+    const replayAt = new Date('2026-09-20T12:10:00.000Z');
+
+    await expect(repository.replayFailed(original.id, replayAt)).resolves.toEqual({
+      state: 'REPLAYED',
+    });
+
+    const replayed = await prisma.productOutboxEvent.findUniqueOrThrow({
+      where: { id: original.id },
+    });
+    expect(replayed).toMatchObject({
+      id: original.id,
+      aggregateType: original.aggregateType,
+      aggregateId: original.aggregateId,
+      aggregateVersion: original.aggregateVersion,
+      eventType: original.eventType,
+      schemaVersion: original.schemaVersion,
+      partitionKey: original.partitionKey,
+      occurredAt: original.occurredAt,
+      payload: original.payload,
+      createdAt: original.createdAt,
+      status: ProductOutboxStatus.Pending,
+      attemptCount: 0,
+      nextAttemptAt: replayAt,
+      lastError: null,
+      leaseOwner: null,
+      leaseUntil: null,
+      publishedAt: null,
+    });
+    await expect(prisma.productOutboxEvent.count({ where: { id: original.id } })).resolves.toBe(1);
+  });
+
+  it('leaves an already-pending event unchanged', async () => {
+    const original = await insertEvent({
+      id: eventId(1),
+      attemptCount: 2,
+      nextAttemptAt: futureAt,
+      lastError: 'Kafka unavailable.',
+    });
+
+    await expect(repository.replayFailed(original.id, now)).resolves.toEqual({
+      state: 'ALREADY_PENDING',
+    });
+    await expect(
+      prisma.productOutboxEvent.findUniqueOrThrow({ where: { id: original.id } }),
+    ).resolves.toMatchObject({
+      attemptCount: 2,
+      nextAttemptAt: futureAt,
+      lastError: 'Kafka unavailable.',
+    });
+    await expect(prisma.productOutboxEvent.count({ where: { id: original.id } })).resolves.toBe(1);
+  });
+
+  it('reports processing, published, and unknown events without changing them', async () => {
+    await insertEvent({
+      id: eventId(1),
+      status: ProductOutboxStatus.Processing,
+      leaseOwner: 'worker-a',
+      leaseUntil: futureAt,
+    });
+    await insertEvent({
+      id: eventId(2),
+      status: ProductOutboxStatus.Published,
+      nextAttemptAt: null,
+      publishedAt: dueAt,
+    });
+
+    await expect(repository.replayFailed(eventId(1), now)).resolves.toEqual({
+      state: 'PROCESSING',
+      leaseUntil: futureAt,
+    });
+    await expect(repository.replayFailed(eventId(2), now)).resolves.toEqual({
+      state: 'PUBLISHED',
+    });
+    await expect(repository.replayFailed(eventId(3), now)).resolves.toEqual({
+      state: 'NOT_FOUND',
+    });
+    await expect(
+      prisma.productOutboxEvent.findUniqueOrThrow({ where: { id: eventId(1) } }),
+    ).resolves.toMatchObject({
+      status: ProductOutboxStatus.Processing,
+      leaseOwner: 'worker-a',
+      leaseUntil: futureAt,
+    });
+  });
+
   it('publishes every due event with two competing workers', async () => {
     await Promise.all(
       Array.from({ length: 6 }, (_, index) =>
@@ -304,6 +400,7 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
       leaseUntil: Date | null;
       publishedAt: Date | null;
       lastError: string | null;
+      attemptCount: number;
       createdAt: Date;
     }> = {},
   ) {
@@ -311,7 +408,9 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
     return prisma.productOutboxEvent.create({
       data: {
         id,
+        aggregateType: 'PRODUCT',
         aggregateId: BigInt(id.slice(-12)),
+        aggregateVersion: 1,
         eventType: 'PRODUCT_CREATED',
         schemaVersion: 1,
         partitionKey: id,
@@ -327,6 +426,7 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
         leaseUntil: values.leaseUntil,
         publishedAt: values.publishedAt,
         lastError: values.lastError,
+        attemptCount: values.attemptCount,
         createdAt: values.createdAt,
       },
     });
@@ -347,13 +447,11 @@ function recordingTransport(publishedIds: string[]): ProductEventTransportPort {
 
 function workerConfig(): ConfigService {
   const values: Record<string, number> = {
-    PRODUCT_OUTBOX_POLL_INTERVAL_MS: 10,
+    PRODUCT_OUTBOX_POLL_INTERVAL_MS: 250,
     PRODUCT_OUTBOX_BATCH_SIZE: 2,
-    PRODUCT_OUTBOX_LEASE_DURATION_MS: 1_000,
+    PRODUCT_OUTBOX_LEASE_MS: 5_000,
     PRODUCT_OUTBOX_SHUTDOWN_TIMEOUT_MS: 1_000,
     PRODUCT_OUTBOX_MAX_ATTEMPTS: 3,
-    PRODUCT_OUTBOX_RETRY_BASE_DELAY_MS: 10,
-    PRODUCT_OUTBOX_RETRY_MAX_DELAY_MS: 100,
   };
 
   return {

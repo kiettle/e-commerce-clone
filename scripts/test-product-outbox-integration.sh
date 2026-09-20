@@ -204,11 +204,9 @@ start_product_service() {
     PRODUCT_EVENTS_TOPIC="$TOPIC" \
     PRODUCT_OUTBOX_POLL_INTERVAL_MS="$poll_interval" \
     PRODUCT_OUTBOX_BATCH_SIZE=5 \
-    PRODUCT_OUTBOX_LEASE_DURATION_MS=5000 \
+    PRODUCT_OUTBOX_LEASE_MS=5000 \
     PRODUCT_OUTBOX_SHUTDOWN_TIMEOUT_MS=2000 \
     PRODUCT_OUTBOX_MAX_ATTEMPTS=5 \
-    PRODUCT_OUTBOX_RETRY_BASE_DELAY_MS=100 \
-    PRODUCT_OUTBOX_RETRY_MAX_DELAY_MS=1000 \
     node dist/apps/product-service/main.js >"$log_file" 2>&1 &
   LAST_PID="$!"
 }
@@ -334,7 +332,7 @@ docker compose exec -T redpanda rpk topic create "$TOPIC" >/dev/null
 start_inventory_service "$TEMP_DIR/inventory.log"
 INVENTORY_PID="$LAST_PID"
 wait_for_http inventory-service "http://localhost:$INVENTORY_API_PORT/health" "$INVENTORY_PID" "$TEMP_DIR/inventory.log"
-start_product_service "$PUBLISHER_API_PORT" 50 "$TEMP_DIR/publisher.log"
+start_product_service "$PUBLISHER_API_PORT" 250 "$TEMP_DIR/publisher.log"
 PUBLISHER_PID="$LAST_PID"
 wait_for_http publisher-worker "http://localhost:$PUBLISHER_API_PORT/health" "$PUBLISHER_PID" "$TEMP_DIR/publisher.log"
 
@@ -353,7 +351,7 @@ echo "  PASS productId=$PRODUCT_ID eventId=$EVENT_ID"
 echo 'Scenario B — acknowledged event is republished after an expired lease'
 db_execute postgres-product "$PRODUCT_DATABASE_NAME" \
   "UPDATE \"product_outbox_events\" SET \"status\" = 'PROCESSING', \"lease_owner\" = 'lost-worker', \"lease_until\" = NOW() - INTERVAL '1 second', \"published_at\" = NULL WHERE \"id\" = '$EVENT_ID';"
-start_product_service "$REPLAY_API_PORT" 50 "$TEMP_DIR/replay.log"
+start_product_service "$REPLAY_API_PORT" 250 "$TEMP_DIR/replay.log"
 REPLAY_PID="$LAST_PID"
 wait_for_http replay-worker "http://localhost:$REPLAY_API_PORT/health" "$REPLAY_PID" "$TEMP_DIR/replay.log"
 

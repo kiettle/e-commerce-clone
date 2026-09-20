@@ -88,7 +88,7 @@ describe('ProductOutboxPublisherWorker', () => {
       leaseOwner: event.leaseOwner,
       error: 'Kafka unavailable',
       status: ProductOutboxStatus.Pending,
-      nextAttemptAt: new Date('2026-09-20T08:00:01.000Z'),
+      nextAttemptAt: new Date('2026-09-20T08:00:05.000Z'),
     });
     expect(outbox.markPublished).not.toHaveBeenCalled();
     expect(Logger.prototype.warn).toHaveBeenCalledWith(
@@ -96,6 +96,45 @@ describe('ProductOutboxPublisherWorker', () => {
     );
     expect(Logger.prototype.warn).not.toHaveBeenCalledWith(
       expect.stringContaining('Mechanical Keyboard'),
+    );
+  });
+
+  it.each([
+    { attemptCount: 1, nextAttemptAt: '2026-09-20T08:00:30.000Z' },
+    { attemptCount: 2, nextAttemptAt: '2026-09-20T08:02:00.000Z' },
+    { attemptCount: 3, nextAttemptAt: '2026-09-20T08:10:00.000Z' },
+  ])(
+    'uses the defined backoff after failed attempt $attemptCount',
+    async ({ attemptCount, nextAttemptAt }) => {
+      const event = claimedEvent({ attemptCount });
+      vi.mocked(outbox.claimBatch).mockResolvedValueOnce([event]).mockResolvedValue([]);
+      vi.mocked(transport.publish).mockRejectedValue(new Error('Kafka unavailable'));
+      vi.mocked(outbox.markFailedAttempt).mockResolvedValue(true);
+
+      worker.onApplicationBootstrap();
+      await runScheduledWork();
+
+      expect(outbox.markFailedAttempt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: ProductOutboxStatus.Pending,
+          nextAttemptAt: new Date(nextAttemptAt),
+        }),
+      );
+    },
+  );
+
+  it.each([
+    ['PRODUCT_OUTBOX_POLL_INTERVAL_MS', 249],
+    ['PRODUCT_OUTBOX_POLL_INTERVAL_MS', 60_001],
+    ['PRODUCT_OUTBOX_BATCH_SIZE', 0],
+    ['PRODUCT_OUTBOX_BATCH_SIZE', 101],
+    ['PRODUCT_OUTBOX_LEASE_MS', 4_999],
+    ['PRODUCT_OUTBOX_LEASE_MS', 300_001],
+    ['PRODUCT_OUTBOX_MAX_ATTEMPTS', 0],
+    ['PRODUCT_OUTBOX_MAX_ATTEMPTS', 21],
+  ])('rejects invalid %s configuration', (name, value) => {
+    expect(() => createWorker(outbox, transport, { [name]: value })).toThrow(
+      `${name} must be an integer between`,
     );
   });
 
@@ -240,11 +279,9 @@ describe('ProductOutboxPublisherWorker', () => {
     const values: Record<string, string | number> = {
       PRODUCT_OUTBOX_POLL_INTERVAL_MS: 1_000,
       PRODUCT_OUTBOX_BATCH_SIZE: 10,
-      PRODUCT_OUTBOX_LEASE_DURATION_MS: 30_000,
+      PRODUCT_OUTBOX_LEASE_MS: 30_000,
       PRODUCT_OUTBOX_SHUTDOWN_TIMEOUT_MS: 5_000,
       PRODUCT_OUTBOX_MAX_ATTEMPTS: 5,
-      PRODUCT_OUTBOX_RETRY_BASE_DELAY_MS: 1_000,
-      PRODUCT_OUTBOX_RETRY_MAX_DELAY_MS: 8_000,
       ...overrides,
     };
     const config = {

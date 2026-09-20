@@ -1,6 +1,7 @@
 import { Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
 import { InvalidProductEventError } from '../../application/errors/invalid-product-event.error';
 import { ProductOutboxStatus } from '../../application/enums/product-outbox-status.enum';
 import { ProductEventTransportPort } from '../../application/ports/product-event-transport.port';
@@ -9,6 +10,8 @@ import {
   ProductOutboxRepositoryPort,
 } from '../../application/ports/product-outbox.repository.port';
 
+const RETRY_DELAYS_MS = [5_000, 30_000, 120_000, 600_000];
+
 export class ProductOutboxPublisherWorker implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(ProductOutboxPublisherWorker.name);
   private readonly pollIntervalMs: number;
@@ -16,8 +19,6 @@ export class ProductOutboxPublisherWorker implements OnApplicationBootstrap, OnM
   private readonly leaseDurationMs: number;
   private readonly shutdownTimeoutMs: number;
   private readonly maxAttempts: number;
-  private readonly retryBaseDelayMs: number;
-  private readonly retryMaxDelayMs: number;
   private workerId?: string;
   private timer?: ReturnType<typeof setTimeout>;
   private currentPass?: Promise<void>;
@@ -28,17 +29,27 @@ export class ProductOutboxPublisherWorker implements OnApplicationBootstrap, OnM
     private readonly transport: ProductEventTransportPort,
     config: ConfigService,
   ) {
-    this.pollIntervalMs = positiveInteger(config, 'PRODUCT_OUTBOX_POLL_INTERVAL_MS', 1_000);
-    this.batchSize = positiveInteger(config, 'PRODUCT_OUTBOX_BATCH_SIZE', 20);
-    this.leaseDurationMs = positiveInteger(config, 'PRODUCT_OUTBOX_LEASE_DURATION_MS', 30_000);
+    this.pollIntervalMs = boundedInteger(
+      config,
+      'PRODUCT_OUTBOX_POLL_INTERVAL_MS',
+      2_000,
+      250,
+      60_000,
+    );
+    this.batchSize = boundedInteger(config, 'PRODUCT_OUTBOX_BATCH_SIZE', 20, 1, 100);
+    this.leaseDurationMs = boundedInteger(
+      config,
+      'PRODUCT_OUTBOX_LEASE_MS',
+      30_000,
+      5_000,
+      300_000,
+    );
     this.shutdownTimeoutMs = positiveInteger(config, 'PRODUCT_OUTBOX_SHUTDOWN_TIMEOUT_MS', 10_000);
-    this.maxAttempts = positiveInteger(config, 'PRODUCT_OUTBOX_MAX_ATTEMPTS', 10);
-    this.retryBaseDelayMs = positiveInteger(config, 'PRODUCT_OUTBOX_RETRY_BASE_DELAY_MS', 1_000);
-    this.retryMaxDelayMs = positiveInteger(config, 'PRODUCT_OUTBOX_RETRY_MAX_DELAY_MS', 60_000);
+    this.maxAttempts = boundedInteger(config, 'PRODUCT_OUTBOX_MAX_ATTEMPTS', 5, 1, 20);
   }
 
   onApplicationBootstrap(): void {
-    this.workerId = `product-outbox-${randomUUID()}`;
+    this.workerId = `${hostname()}:${process.pid}:${randomUUID()}`;
     this.scheduleNextPass(0);
   }
 
@@ -183,9 +194,29 @@ export class ProductOutboxPublisherWorker implements OnApplicationBootstrap, OnM
   }
 
   private retryDelay(attemptNumber: number): number {
-    const exponent = Math.min(attemptNumber - 1, 30);
-    return Math.min(this.retryBaseDelayMs * 2 ** exponent, this.retryMaxDelayMs);
+    return RETRY_DELAYS_MS[Math.min(attemptNumber - 1, RETRY_DELAYS_MS.length - 1)];
   }
+}
+
+function boundedInteger(
+  config: ConfigService,
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const configured = config.get<string | number>(name);
+
+  if (configured === undefined || configured === null || configured === '') {
+    return fallback;
+  }
+
+  const value = Number(configured);
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be an integer between ${minimum} and ${maximum}.`);
+  }
+
+  return value;
 }
 
 function positiveInteger(config: ConfigService, name: string, fallback: number): number {

@@ -6,6 +6,7 @@ import {
   ClaimProductOutboxBatch,
   FailedProductOutboxAttempt,
   ProductOutboxRepositoryPort,
+  ReplayProductOutboxResult,
 } from '../../../application/ports/product-outbox.repository.port';
 import { PrismaService } from './prisma.service';
 
@@ -140,22 +141,51 @@ export class PrismaProductOutboxRepository implements ProductOutboxRepositoryPor
     return result.count === 1;
   }
 
-  async replayFailed(id: string, nextAttemptAt: Date): Promise<void> {
+  async replayFailed(id: string, nextAttemptAt: Date): Promise<ReplayProductOutboxResult> {
     assertValidDate(nextAttemptAt, 'nextAttemptAt');
 
-    await this.prisma.productOutboxEvent.updateMany({
+    const replayed = await this.prisma.productOutboxEvent.updateMany({
       where: {
         id,
         status: ProductOutboxStatus.Failed,
       },
       data: {
         status: ProductOutboxStatus.Pending,
+        attemptCount: 0,
         nextAttemptAt,
         lastError: null,
         leaseOwner: null,
         leaseUntil: null,
+        publishedAt: null,
+        updatedAt: nextAttemptAt,
       },
     });
+
+    if (replayed.count === 1) {
+      return { state: 'REPLAYED' };
+    }
+
+    const event = await this.prisma.productOutboxEvent.findUnique({
+      where: { id },
+      select: {
+        status: true,
+        leaseUntil: true,
+      },
+    });
+
+    if (!event) {
+      return { state: 'NOT_FOUND' };
+    }
+
+    if (event.status === ProductOutboxStatus.Pending) {
+      return { state: 'ALREADY_PENDING' };
+    }
+
+    if (event.status === ProductOutboxStatus.Processing) {
+      return { state: 'PROCESSING', leaseUntil: event.leaseUntil };
+    }
+
+    return { state: 'PUBLISHED' };
   }
 }
 

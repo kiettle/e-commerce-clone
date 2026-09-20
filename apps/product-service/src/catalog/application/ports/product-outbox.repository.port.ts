@@ -30,9 +30,16 @@ export interface FailedProductOutboxAttempt {
   nextAttemptAt: Date | null;
 }
 
+export type ReplayProductOutboxResult =
+  | { state: 'REPLAYED' }
+  | { state: 'ALREADY_PENDING' }
+  | { state: 'PROCESSING'; leaseUntil: Date | null }
+  | { state: 'PUBLISHED' }
+  | { state: 'NOT_FOUND' };
+
 export interface ProductOutboxRepositoryPort {
   claimBatch(request: ClaimProductOutboxBatch): Promise<ClaimedProductOutboxEvent[]>;
   markPublished(id: string, leaseOwner: string, publishedAt: Date): Promise<boolean>;
   markFailedAttempt(attempt: FailedProductOutboxAttempt): Promise<boolean>;
-  replayFailed(id: string, nextAttemptAt: Date): Promise<void>;
+  replayFailed(id: string, nextAttemptAt: Date): Promise<ReplayProductOutboxResult>;
 }

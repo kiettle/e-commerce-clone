@@ -91,6 +91,8 @@ create product
 Inventory treats a repeated event ID and matching payload as a successful no-op.
 Reusing an event ID for different data is rejected. Product/outbox persistence
 and inventory/processed-marker persistence each use one local transaction.
+Operational inspection and failed-event replay are documented in the
+[product outbox recovery runbook](docs/product-outbox-runbook.md).
 
 ### Authenticated checkout
 
@@ -501,7 +503,7 @@ operation are intentionally outside the current demo scope.
    work automatically.
 2. Add PostgreSQL and transport integration tests plus happy-path, replay, and
    failure-path end-to-end tests.
-3. Add operational controls for replaying failed outbox events and monitoring backlog age.
+3. Add metrics and read-only admin visibility for outbox backlog age and failed events.
 4. Add catalog authorization, request deadlines, correlation IDs, and a
    reproducible deployment artifact.
 

@@ -69,7 +69,9 @@ export class PrismaProductRepository
       await transaction.productOutboxEvent.create({
         data: {
           id: data.eventId,
+          aggregateType: 'PRODUCT',
           aggregateId: createdProduct.id,
+          aggregateVersion: 1,
           eventType: 'PRODUCT_CREATED',
           schemaVersion: 1,
           partitionKey: createdProduct.id.toString(),

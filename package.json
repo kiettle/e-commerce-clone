@@ -46,6 +46,7 @@
     "frontend:dev": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build",
     "frontend:lint": "npm --prefix frontend run lint",
+    "outbox:replay:product": "nest build product-outbox-cli && node dist/apps/product-service/outbox-replay.js",
     "test": "vitest run",
     "test:integration": "bash scripts/test-product-outbox-integration.sh",
     "test:watch": "vitest"

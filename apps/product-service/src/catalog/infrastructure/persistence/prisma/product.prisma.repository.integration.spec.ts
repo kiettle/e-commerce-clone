@@ -63,7 +63,9 @@ describeWithDatabase('PrismaProductRepository atomic product creation', () => {
       where: { id: data.eventId },
     });
     expect(outboxEvent).toMatchObject({
+      aggregateType: 'PRODUCT',
       aggregateId: product.id,
+      aggregateVersion: 1,
       eventType: 'PRODUCT_CREATED',
       schemaVersion: 1,
       partitionKey: product.id.toString(),
@@ -100,6 +102,28 @@ describeWithDatabase('PrismaProductRepository atomic product creation', () => {
     expect(await prisma.productSku.count()).toBe(2);
     expect(await prisma.productOutboxEvent.count()).toBe(1);
     expect(await prisma.product.findFirst({ where: { name: 'Second Product' } })).toBeNull();
+  });
+
+  it('enforces one event for each aggregate version', async () => {
+    const data = productData(categoryId);
+    const product = await repository.createWithOutbox(data);
+
+    await expect(
+      prisma.productOutboxEvent.create({
+        data: {
+          id: '550e8400-e29b-41d4-a716-446655440099',
+          aggregateType: 'PRODUCT',
+          aggregateId: product.id,
+          aggregateVersion: 1,
+          eventType: 'PRODUCT_CREATED',
+          schemaVersion: 1,
+          partitionKey: product.id.toString(),
+          occurredAt: new Date('2026-09-20T08:01:00.000Z'),
+          payload: { productId: product.id.toString(), name: product.name, skus: [] },
+        },
+      }),
+    ).rejects.toBeDefined();
+    await expect(prisma.productOutboxEvent.count()).resolves.toBe(1);
   });
 
   it('does not create an outbox event when SKU persistence fails', async () => {

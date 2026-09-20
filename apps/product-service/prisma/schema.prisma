@@ -70,23 +70,26 @@ model ProductSku {
 }
 
 model ProductOutboxEvent {
-  id            String              @id @default(uuid()) @db.Uuid
-  aggregateId   BigInt              @map("aggregate_id")
-  eventType     String              @map("event_type") @db.VarChar(100)
-  schemaVersion Int                 @default(1) @map("schema_version")
-  partitionKey  String              @map("partition_key") @db.VarChar(255)
-  occurredAt    DateTime            @default(now()) @map("occurred_at")
-  payload       Json
-  status        ProductOutboxStatus @default(PENDING)
-  attemptCount  Int                 @default(0) @map("attempt_count")
-  nextAttemptAt DateTime?           @default(now()) @map("next_attempt_at")
-  lastError     String?             @map("last_error") @db.Text
-  leaseOwner    String?             @map("lease_owner") @db.VarChar(255)
-  leaseUntil    DateTime?           @map("lease_until")
-  publishedAt   DateTime?           @map("published_at")
-  createdAt     DateTime            @default(now()) @map("created_at")
-  updatedAt     DateTime            @updatedAt @map("updated_at")
+  id               String              @id @default(uuid()) @db.Uuid
+  aggregateType    String              @map("aggregate_type") @db.VarChar(100)
+  aggregateId      BigInt              @map("aggregate_id")
+  aggregateVersion Int                 @map("aggregate_version")
+  eventType        String              @map("event_type") @db.VarChar(100)
+  schemaVersion    Int                 @default(1) @map("schema_version")
+  partitionKey     String              @map("partition_key") @db.VarChar(255)
+  occurredAt       DateTime            @default(now()) @map("occurred_at")
+  payload          Json
+  status           ProductOutboxStatus @default(PENDING)
+  attemptCount     Int                 @default(0) @map("attempt_count")
+  nextAttemptAt    DateTime?           @default(now()) @map("next_attempt_at")
+  lastError        String?             @map("last_error") @db.Text
+  leaseOwner       String?             @map("lease_owner") @db.VarChar(255)
+  leaseUntil       DateTime?           @map("lease_until")
+  publishedAt      DateTime?           @map("published_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
 
+  @@unique([aggregateType, aggregateId, aggregateVersion], map: "product_outbox_events_aggregate_identity_key")
   @@index([status, nextAttemptAt, createdAt, id])
   @@index([status, leaseUntil, createdAt, id])
   @@index([leaseUntil])
