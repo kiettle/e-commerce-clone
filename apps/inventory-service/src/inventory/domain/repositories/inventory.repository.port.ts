@@ -23,9 +23,16 @@ export interface StockOperationItem {
   flashSaleItemId?: bigint | null;
 }
 
+export interface StockOperation {
+  cartId: bigint;
+  checkoutId: string;
+  userId: bigint;
+  items: StockOperationItem[];
+}
+
 export interface InventoryRepositoryPort {
   initializeFromProductCreated(event: ProductCreatedStockEvent): Promise<void>;
-  reserveStock(cartId: bigint, items: StockOperationItem[]): Promise<void>;
-  commitStock(cartId: bigint, items: StockOperationItem[]): Promise<void>;
-  releaseStock(cartId: bigint, items: StockOperationItem[]): Promise<void>;
+  reserveStock(operation: StockOperation): Promise<void>;
+  commitStock(operation: StockOperation): Promise<void>;
+  releaseStock(operation: StockOperation): Promise<void>;
 }

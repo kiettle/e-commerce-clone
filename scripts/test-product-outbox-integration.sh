@@ -306,7 +306,7 @@ env \
 db_execute postgres-product "$PRODUCT_DATABASE_NAME" \
   'DELETE FROM "product_outbox_events"; DELETE FROM "product_skus"; DELETE FROM "products"; DELETE FROM "categories";'
 db_execute postgres-inventory "$INVENTORY_DATABASE_NAME" \
-  'DELETE FROM "flash_sale_stocks"; DELETE FROM "processed_flash_sale_events"; DELETE FROM "stock_transactions"; DELETE FROM "stock_reservations"; DELETE FROM "inventory_stocks"; DELETE FROM "processed_product_events";'
+  'DELETE FROM "stock_transactions"; DELETE FROM "stock_reservations"; DELETE FROM "flash_sale_stocks"; DELETE FROM "processed_flash_sale_events"; DELETE FROM "inventory_stocks"; DELETE FROM "processed_product_events";'
 
 echo 'Scenario A — broker outage during product creation'
 docker compose stop redpanda >/dev/null

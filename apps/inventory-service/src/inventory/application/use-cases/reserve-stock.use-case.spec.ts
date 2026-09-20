@@ -41,20 +41,23 @@ describe('ReserveStockUseCase', () => {
     });
 
     expect(inventory.reserveStock).toHaveBeenCalledTimes(1);
-    expect(inventory.reserveStock).toHaveBeenCalledWith(55n, [
-      {
-        productSkuId: 101n,
-        quantity: 5,
-        flashSaleId: null,
-        flashSaleItemId: null,
-      },
-      {
-        productSkuId: 102n,
-        quantity: 1,
-        flashSaleId: null,
-        flashSaleItemId: null,
-      },
-    ]);
+    expect(inventory.reserveStock).toHaveBeenCalledWith({
+      ...operationIdentity,
+      items: [
+        {
+          productSkuId: 101n,
+          quantity: 5,
+          flashSaleId: null,
+          flashSaleItemId: null,
+        },
+        {
+          productSkuId: 102n,
+          quantity: 1,
+          flashSaleId: null,
+          flashSaleItemId: null,
+        },
+      ],
+    });
   });
 
   it('preserves complete flash sale context', async () => {
@@ -70,14 +73,17 @@ describe('ReserveStockUseCase', () => {
       ],
     });
 
-    expect(inventory.reserveStock).toHaveBeenCalledWith(55n, [
-      {
-        productSkuId: 101n,
-        quantity: 2,
-        flashSaleId: 201n,
-        flashSaleItemId: 301n,
-      },
-    ]);
+    expect(inventory.reserveStock).toHaveBeenCalledWith({
+      ...operationIdentity,
+      items: [
+        {
+          productSkuId: 101n,
+          quantity: 2,
+          flashSaleId: 201n,
+          flashSaleItemId: 301n,
+        },
+      ],
+    });
   });
 
   it.each([{ flashSaleId: 201n }, { flashSaleItemId: 301n }])(

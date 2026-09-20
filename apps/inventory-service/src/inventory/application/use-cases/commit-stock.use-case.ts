@@ -14,6 +14,6 @@ export class CommitStockUseCase {
       throw new InvalidStockOperationError('Stock operation items are required.');
     }
 
-    await this.inventory.commitStock(command.cartId, items);
+    await this.inventory.commitStock({ ...command, items });
   }
 }

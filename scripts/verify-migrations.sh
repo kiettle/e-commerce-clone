@@ -106,15 +106,29 @@ docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_in
    VALUES (20, 100, 2, '\''RESERVED'\'', NOW());' >/dev/null
 docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_inventory \
   -v ON_ERROR_STOP=1 < apps/inventory-service/prisma/migrations/20260920010000_commit_stock/migration.sql
+docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_inventory \
+  -v ON_ERROR_STOP=1 < apps/inventory-service/prisma/migrations/20260920040000_harden_product_event_idempotency/migration.sql
+docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_inventory \
+  -v ON_ERROR_STOP=1 < apps/inventory-service/prisma/migrations/20260920050000_add_flash_sale_projection/migration.sql
+docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_inventory \
+  -v ON_ERROR_STOP=1 -c \
+  'INSERT INTO "flash_sale_stocks" ("flash_sale_id", "flash_sale_item_id", "product_sku_id", "original_price", "sale_price", "quantity_limit", "starts_at", "ends_at", "updated_at")
+   VALUES (50, 501, 100, 19.90, 9.90, 5, NOW() - INTERVAL '\''1 minute'\'', NOW() + INTERVAL '\''10 minutes'\'', NOW());' >/dev/null
+docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_inventory \
+  -v ON_ERROR_STOP=1 < apps/inventory-service/prisma/migrations/20260921020000_atomic_flash_sale_reservations/migration.sql
 
 cart_rows="$(docker compose exec -T postgres-cart psql -U postgres -d verify_existing_cart -Atq -c 'SELECT COUNT(*) FROM "carts";')"
 legacy_cart_items="$(docker compose exec -T postgres-cart psql -U postgres -d verify_existing_cart -Atq -c 'SELECT COUNT(*) FROM "cart_items" WHERE "flash_sale_id" IS NULL AND "flash_sale_item_id" IS NULL;')"
 order_rows="$(docker compose exec -T postgres-order psql -U postgres -d verify_existing_order -Atq -c 'SELECT COUNT(*) FROM "orders" WHERE "checkout_id" IS NULL;')"
 inventory_rows="$(docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_inventory -Atq -c 'SELECT COUNT(*) FROM "stock_reservations" WHERE "status" = '\''RESERVED'\'';')"
+legacy_reservations="$(docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_inventory -Atq -c 'SELECT COUNT(*) FROM "stock_reservations" WHERE "checkout_id" IS NULL AND "user_id" IS NULL;')"
+legacy_sale_rows="$(docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_inventory -Atq -c 'SELECT COUNT(*) FROM "flash_sale_stocks" WHERE "user_limit" = 1 AND "reserved_quantity" = 0 AND "sold_quantity" = 0;')"
 [[ "${cart_rows//[[:space:]]/}" == 1 ]]
 [[ "${legacy_cart_items//[[:space:]]/}" == 1 ]]
 [[ "${order_rows//[[:space:]]/}" == 1 ]]
 [[ "${inventory_rows//[[:space:]]/}" == 1 ]]
+[[ "${legacy_reservations//[[:space:]]/}" == 1 ]]
+[[ "${legacy_sale_rows//[[:space:]]/}" == 1 ]]
 
 echo "Deploying migrations to the existing local databases..."
 npm run prisma:cart:deploy

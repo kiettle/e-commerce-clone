@@ -40,20 +40,23 @@ describe('CommitStockUseCase', () => {
       ],
     });
 
-    expect(inventory.commitStock).toHaveBeenCalledWith(55n, [
-      {
-        productSkuId: 101n,
-        quantity: 5,
-        flashSaleId: null,
-        flashSaleItemId: null,
-      },
-      {
-        productSkuId: 102n,
-        quantity: 1,
-        flashSaleId: null,
-        flashSaleItemId: null,
-      },
-    ]);
+    expect(inventory.commitStock).toHaveBeenCalledWith({
+      ...operationIdentity,
+      items: [
+        {
+          productSkuId: 101n,
+          quantity: 5,
+          flashSaleId: null,
+          flashSaleItemId: null,
+        },
+        {
+          productSkuId: 102n,
+          quantity: 1,
+          flashSaleId: null,
+          flashSaleItemId: null,
+        },
+      ],
+    });
   });
 
   it.each([0, -1])('rejects a non-positive quantity of %s', async (quantity) => {

@@ -41,20 +41,23 @@ describe('ReleaseStockUseCase', () => {
     });
 
     expect(inventory.releaseStock).toHaveBeenCalledTimes(1);
-    expect(inventory.releaseStock).toHaveBeenCalledWith(55n, [
-      {
-        productSkuId: 101n,
-        quantity: 5,
-        flashSaleId: null,
-        flashSaleItemId: null,
-      },
-      {
-        productSkuId: 102n,
-        quantity: 1,
-        flashSaleId: null,
-        flashSaleItemId: null,
-      },
-    ]);
+    expect(inventory.releaseStock).toHaveBeenCalledWith({
+      ...operationIdentity,
+      items: [
+        {
+          productSkuId: 101n,
+          quantity: 5,
+          flashSaleId: null,
+          flashSaleItemId: null,
+        },
+        {
+          productSkuId: 102n,
+          quantity: 1,
+          flashSaleId: null,
+          flashSaleItemId: null,
+        },
+      ],
+    });
   });
 
   it.each([0, -1])(

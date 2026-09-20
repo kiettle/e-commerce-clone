@@ -16,7 +16,7 @@ export class ReserveStockUseCase {
       throw new InvalidStockOperationError('Stock operation items are required.');
     }
 
-    await this.inventory.reserveStock(command.cartId, items);
+    await this.inventory.reserveStock({ ...command, items });
   }
 }
 
@@ -52,7 +52,9 @@ export function normalizeStockItems(items: StockOperationItem[]): StockOperation
     existing.quantity += item.quantity;
   }
 
-  return Array.from(itemBySku.values());
+  return Array.from(itemBySku.values()).sort((left, right) =>
+    left.productSkuId < right.productSkuId ? -1 : left.productSkuId > right.productSkuId ? 1 : 0,
+  );
 }
 
 export function validateStockOperation(

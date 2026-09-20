@@ -14,6 +14,6 @@ export class ReleaseStockUseCase {
       throw new InvalidStockOperationError('Stock operation items are required.');
     }
 
-    await this.inventory.releaseStock(command.cartId, items);
+    await this.inventory.releaseStock({ ...command, items });
   }
 }

@@ -122,7 +122,7 @@ describe('PrismaInventoryRepository reservation completion', () => {
   it('commits a reservation without restoring available quantity', async () => {
     const { repository, transaction } = setup([reservation(101n, StockReservationStatus.Reserved)]);
 
-    await repository.commitStock(55n, [{ productSkuId: 101n, quantity: 2 }]);
+    await repository.commitStock(operation([{ productSkuId: 101n, quantity: 2 }]));
 
     expect(transaction.inventoryStock.updateMany).toHaveBeenCalledWith({
       where: { productSkuId: 101n, reservedQuantity: { gte: 2 } },
@@ -147,7 +147,7 @@ describe('PrismaInventoryRepository reservation completion', () => {
       reservation(101n, StockReservationStatus.Committed),
     ]);
 
-    await repository.commitStock(55n, [{ productSkuId: 101n, quantity: 2 }]);
+    await repository.commitStock(operation([{ productSkuId: 101n, quantity: 2 }]));
 
     expect(transaction.inventoryStock.updateMany).not.toHaveBeenCalled();
     expect(transaction.stockReservation.update).not.toHaveBeenCalled();
@@ -161,10 +161,12 @@ describe('PrismaInventoryRepository reservation completion', () => {
     ]);
 
     await expect(
-      repository.commitStock(55n, [
-        { productSkuId: 101n, quantity: 2 },
-        { productSkuId: 102n, quantity: 2 },
-      ]),
+      repository.commitStock(
+        operation([
+          { productSkuId: 101n, quantity: 2 },
+          { productSkuId: 102n, quantity: 2 },
+        ]),
+      ),
     ).rejects.toBeInstanceOf(InvalidStockOperationError);
     expect(transaction.inventoryStock.updateMany).not.toHaveBeenCalled();
   });
@@ -175,7 +177,7 @@ describe('PrismaInventoryRepository reservation completion', () => {
     ]);
 
     await expect(
-      repository.releaseStock(55n, [{ productSkuId: 101n, quantity: 2 }]),
+      repository.releaseStock(operation([{ productSkuId: 101n, quantity: 2 }])),
     ).rejects.toBeInstanceOf(InvalidStockOperationError);
     expect(transaction.inventoryStock.updateMany).not.toHaveBeenCalled();
   });
@@ -250,11 +252,24 @@ function reservation(productSkuId: bigint, status: StockReservationStatus) {
   return {
     id: productSkuId,
     cartId: 55n,
+    checkoutId: null,
+    userId: null,
     productSkuId,
+    flashSaleId: null,
+    flashSaleItemId: null,
     quantity: 2,
     status,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     releasedAt: status === StockReservationStatus.Released ? new Date() : null,
+  };
+}
+
+function operation(items: Array<{ productSkuId: bigint; quantity: number }>) {
+  return {
+    cartId: 55n,
+    checkoutId: '550e8400-e29b-41d4-a716-446655440000',
+    userId: 10n,
+    items,
   };
 }
