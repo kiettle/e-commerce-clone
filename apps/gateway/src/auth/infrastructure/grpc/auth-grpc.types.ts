@@ -19,11 +19,10 @@ export interface ValidateTokenGrpcResponse {
   is_valid: boolean;
   user_id: string;
   message?: string;
+  role: string;
 }
 
 export interface AuthGrpcService {
   login(request: LoginGrpcRequest): Observable<LoginGrpcResponse>;
-  validateToken(
-    request: ValidateTokenGrpcRequest,
-  ): Observable<ValidateTokenGrpcResponse>;
+  validateToken(request: ValidateTokenGrpcRequest): Observable<ValidateTokenGrpcResponse>;
 }

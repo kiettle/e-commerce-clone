@@ -1,4 +1,5 @@
 import { TokenServicePort } from '../ports/token.service.port';
+import { UserRole } from '../../domain/enums/user-role.enum';
 import { ValidateTokenUseCase } from './validate-token.use-case';
 import { InvalidTokenError } from '../errors/invalid-token.error';
 import { beforeEach, describe, expect, it, vi, type Mocked } from 'vitest';
@@ -10,7 +11,7 @@ describe('ValidateTokenUseCase', () => {
   const verifiedUser = {
     userId: 1n,
     email: 'user@example.com',
-    role: 'user',
+    role: UserRole.User,
   };
 
   let tokenService: Mocked<TokenServicePort>;

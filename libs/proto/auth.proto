@@ -29,4 +29,5 @@ message ValidateTokenResponse {
   bool is_valid = 1;
   int64 user_id = 2; 
   string message = 3; 
+  string role = 4;
 }

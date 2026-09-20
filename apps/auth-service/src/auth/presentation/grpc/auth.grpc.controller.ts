@@ -24,6 +24,7 @@ interface ValidateTokenGrpcResponse {
   is_valid: boolean;
   user_id: string;
   message: string;
+  role: string;
 }
 
 @Controller()
@@ -57,9 +58,7 @@ export class AuthGrpcController {
   }
 
   @GrpcMethod('AuthService', 'ValidateToken')
-  async validateToken(
-    request: ValidateTokenGrpcRequest,
-  ): Promise<ValidateTokenGrpcResponse> {
+  async validateToken(request: ValidateTokenGrpcRequest): Promise<ValidateTokenGrpcResponse> {
     try {
       const result = await this.validateTokenUseCase.execute({
         token: request.token,
@@ -69,6 +68,7 @@ export class AuthGrpcController {
         is_valid: true,
         user_id: result.userId.toString(),
         message: 'OK',
+        role: result.role,
       };
     } catch (error) {
       if (error instanceof InvalidTokenError) {
@@ -76,6 +76,7 @@ export class AuthGrpcController {
           is_valid: false,
           user_id: '0',
           message: 'Invalid token',
+          role: '',
         };
       }
 

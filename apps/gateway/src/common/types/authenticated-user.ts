@@ -1,5 +1,8 @@
+import { UserRole } from '../enums/user-role.enum';
+
 export interface AuthenticatedUser {
   userId: number;
+  role: UserRole;
 }
 
 export interface AuthenticatedRequest {

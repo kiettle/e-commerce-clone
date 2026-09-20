@@ -6,6 +6,7 @@ import {
   TokenServicePort,
   VerifiedTokenPayload,
 } from '../../application/ports/token.service.port';
+import { UserRole } from '../../domain/enums/user-role.enum';
 
 interface JwtPayload {
   sub?: unknown;
@@ -26,7 +27,7 @@ export class JwtTokenService implements TokenServicePort {
       {
         userId: payload.userId.toString(),
         email: payload.email,
-        role: payload.role,
+        role: parseRole(payload.role),
       },
       {
         subject: payload.email,
@@ -88,10 +89,10 @@ function parseEmail(value: unknown): string {
   throw new Error('JWT payload is missing email.');
 }
 
-function parseRole(value: unknown): string {
-  if (typeof value === 'string' && value.trim()) {
+function parseRole(value: unknown): UserRole {
+  if (value === UserRole.Admin || value === UserRole.User) {
     return value;
   }
 
-  throw new Error('JWT payload is missing role.');
+  throw new Error('JWT payload has an invalid role.');
 }

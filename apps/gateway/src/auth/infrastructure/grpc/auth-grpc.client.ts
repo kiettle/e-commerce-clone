@@ -7,20 +7,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  ClientGrpc,
-  ClientProxyFactory,
-  Transport,
-} from '@nestjs/microservices';
+import { ClientGrpc, ClientProxyFactory, Transport } from '@nestjs/microservices';
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { join } from 'node:path';
 import { firstValueFrom } from 'rxjs';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
-import {
-  AuthGrpcService,
-  LoginGrpcRequest,
-  ValidateTokenGrpcResponse,
-} from './auth-grpc.types';
+import { UserRole } from '../../../common/enums/user-role.enum';
+import { AuthGrpcService, LoginGrpcRequest, ValidateTokenGrpcResponse } from './auth-grpc.types';
 
 interface CloseableClientGrpc extends ClientGrpc {
   close?: () => void;
@@ -68,9 +61,7 @@ export class AuthGrpcClient implements OnModuleInit, OnModuleDestroy {
 
   async validateToken(token: string): Promise<AuthenticatedUser> {
     try {
-      const response = await firstValueFrom(
-        this.getAuthService().validateToken({ token }),
-      );
+      const response = await firstValueFrom(this.getAuthService().validateToken({ token }));
 
       return mapValidateTokenResponse(response);
     } catch (error) {
@@ -102,9 +93,7 @@ export class AuthGrpcClient implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-function mapValidateTokenResponse(
-  response: ValidateTokenGrpcResponse,
-): AuthenticatedUser {
+function mapValidateTokenResponse(response: ValidateTokenGrpcResponse): AuthenticatedUser {
   if (!response.is_valid) {
     throw new UnauthorizedException(response.message ?? 'Invalid token.');
   }
@@ -115,7 +104,11 @@ function mapValidateTokenResponse(
     throw new UnauthorizedException('Invalid token user.');
   }
 
-  return { userId };
+  if (response.role !== UserRole.Admin && response.role !== UserRole.User) {
+    throw new UnauthorizedException('Invalid token role.');
+  }
+
+  return { userId, role: response.role };
 }
 
 function mapGrpcClientError(error: unknown): Error {
