@@ -23,6 +23,7 @@ enum ProductSkuStatus {
 
 enum ProductOutboxStatus {
   PENDING
+  PROCESSING
   PUBLISHED
   FAILED
 }
@@ -86,7 +87,8 @@ model ProductOutboxEvent {
   createdAt     DateTime            @default(now()) @map("created_at")
   updatedAt     DateTime            @updatedAt @map("updated_at")
 
-  @@index([status, nextAttemptAt, occurredAt])
+  @@index([status, nextAttemptAt, createdAt, id])
+  @@index([status, leaseUntil, createdAt, id])
   @@index([leaseUntil])
   @@index([aggregateId, occurredAt])
   @@map("product_outbox_events")

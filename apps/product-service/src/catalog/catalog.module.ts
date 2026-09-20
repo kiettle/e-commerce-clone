@@ -3,6 +3,7 @@ import {
   PRODUCT_CREATION_REPOSITORY,
   ProductCreationRepositoryPort,
 } from './application/ports/product-creation.repository.port';
+import { PRODUCT_OUTBOX_REPOSITORY } from './application/ports/product-outbox.repository.port';
 import { CreateCategoryUseCase } from './application/use-cases/create-category.use-case';
 import { CreateProductUseCase } from './application/use-cases/create-product.use-case';
 import { DeleteProductUseCase } from './application/use-cases/delete-product.use-case';
@@ -18,6 +19,7 @@ import {
   ProductRepositoryPort,
 } from './domain/repositories/product.repository.port';
 import { PrismaCategoryRepository } from './infrastructure/persistence/prisma/category.prisma.repository';
+import { PrismaProductOutboxRepository } from './infrastructure/persistence/prisma/product-outbox.prisma.repository';
 import { PrismaProductRepository } from './infrastructure/persistence/prisma/product.prisma.repository';
 import { PrismaService } from './infrastructure/persistence/prisma/prisma.service';
 import { CategoriesController } from './presentation/http/categories.controller';
@@ -28,6 +30,7 @@ import { ProductsController } from './presentation/http/products.controller';
   providers: [
     PrismaService,
     PrismaProductRepository,
+    PrismaProductOutboxRepository,
     {
       provide: CATEGORY_REPOSITORY,
       useClass: PrismaCategoryRepository,
@@ -39,6 +42,10 @@ import { ProductsController } from './presentation/http/products.controller';
     {
       provide: PRODUCT_CREATION_REPOSITORY,
       useExisting: PrismaProductRepository,
+    },
+    {
+      provide: PRODUCT_OUTBOX_REPOSITORY,
+      useExisting: PrismaProductOutboxRepository,
     },
     {
       provide: CreateCategoryUseCase,
