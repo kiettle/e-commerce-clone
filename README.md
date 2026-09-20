@@ -1,6 +1,10 @@
 # E-commerce NestJS Microservices
 
-A Shopee-like backend rebuilt as a NestJS monorepo. The project focuses on a small but meaningful commerce workflow: products publish stock events, inventory owns reservations, carts orchestrate checkout, and orders persist the final purchase snapshot.
+A portfolio-oriented, Shopee-like commerce system built as a NestJS monorepo
+with six separately runnable services. The scope is intentionally narrow: it
+demonstrates authentication, catalog management, event-driven stock
+initialization, cart snapshots, inventory reservation, and orchestrated checkout
+without pretending to be a production-complete marketplace.
 
 ## Why This Project Exists
 
@@ -12,33 +16,147 @@ This repository is a portfolio backend project for demonstrating:
 - gRPC service-to-service calls
 - Kafka-compatible product events through Redpanda
 - Checkout compensation logic when order creation fails
-- Focused unit tests around risky application behavior
+- Testable application boundaries around risky business behavior
+
+The implemented happy path is suitable for a controlled local demonstration.
+Automated tests, end-to-end reliability, authorization, and production
+deployment hardening are still incomplete; see
+[Current Limitations](#current-limitations).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser["React demo or API client"] -->|REST + JWT| Gateway["API Gateway"]
+    Gateway -->|gRPC| Auth["Auth service"]
+    Gateway -->|REST| Product["Product service"]
+    Gateway -->|REST + internal user header| Cart["Cart service"]
+    Cart -->|REST snapshot lookup| Product
+    Cart -->|gRPC reserve/release| Inventory["Inventory service"]
+    Cart -->|gRPC create| Order["Order service"]
+    Product -->|ProductCreated / Protobuf| Kafka["Redpanda (Kafka API)"]
+    Kafka -->|consumer group| Inventory
+
+    Auth --- AuthDb[("auth_db")]
+    Product --- ProductDb[("product_db")]
+    Cart --- CartDb[("cart_db")]
+    Inventory --- InventoryDb[("inventory_db")]
+    Order --- OrderDb[("order_db")]
+```
+
+The monorepo shares build tooling and transport contracts, not business data.
+Every stateful service owns a separate PostgreSQL database and does not join
+across service boundaries.
 
 ## Service Map
 
-| Service | Port | Responsibility |
-| --- | ---: | --- |
-| `gateway` | 4000 | Public HTTP entry point, auth/catalog/cart forwarding, Swagger docs |
-| `auth-service` | 4005 / gRPC 9005 | Users, login, JWT generation, token validation |
-| `product-service` | 4001 | Categories, products, SKUs, product-created events |
-| `inventory-service` | 4003 / gRPC 9003 | Stock rows, product event consumer, reserve/release stock |
-| `cart-service` | 4002 | Active carts, cart items, checkout orchestration |
-| `order-service` | 4004 / gRPC 9004 | Order creation, order items, server-side totals |
+| Service             |             Port | Responsibility                                                      |
+| ------------------- | ---------------: | ------------------------------------------------------------------- |
+| `gateway`           |             4000 | Public HTTP entry point, auth/catalog/cart forwarding, Swagger docs |
+| `auth-service`      | 4005 / gRPC 9005 | Users, login, JWT generation, token validation                      |
+| `product-service`   |             4001 | Categories, products, SKUs, product-created events                  |
+| `inventory-service` | 4003 / gRPC 9003 | Stock rows, product event consumer, reserve/release stock           |
+| `cart-service`      |             4002 | Active carts, cart items, checkout orchestration                    |
+| `order-service`     | 4004 / gRPC 9004 | Order creation, order items, server-side totals                     |
 
-## Main Workflow
+## Communication Map
+
+| From    | To                  | Transport                                    | Why                                                     |
+| ------- | ------------------- | -------------------------------------------- | ------------------------------------------------------- |
+| Client  | Gateway             | REST/JSON                                    | Browser-friendly public API and Swagger documentation   |
+| Gateway | Auth                | gRPC/Protobuf                                | Typed synchronous login and token-validation calls      |
+| Gateway | Product and Cart    | REST/JSON                                    | Simple request forwarding at the public boundary        |
+| Cart    | Product             | REST/JSON                                    | Fetch a product/SKU snapshot before storing a cart item |
+| Cart    | Inventory and Order | gRPC/Protobuf                                | Typed synchronous checkout operations                   |
+| Product | Inventory           | Kafka-compatible event with Protobuf payload | Decouple product persistence from stock initialization  |
+
+Only the gateway is intended to be public. The downstream HTTP and gRPC
+interfaces currently rely on network isolation rather than service-to-service
+authentication.
+
+## Main Business Flows
+
+### Product to inventory
 
 ```text
 create product
-  -> publish ProductCreated event
-  -> inventory creates stock rows
-  -> add SKU to cart
-  -> checkout cart
-  -> reserve stock
-  -> create order
-  -> mark cart checked out
+  -> commit product, SKU rows, and a pending ProductCreated outbox row
+  -> return without waiting for Kafka
+  -> leased background publisher sends the stored event and marks it published
+  -> inventory consumes the event
+  -> create stock and INITIALIZE transaction rows
+  -> record the event ID and canonical payload hash as processed
 ```
 
-If order creation fails after inventory reservation, `cart-service` calls inventory `ReleaseStock` as compensation.
+Inventory treats a repeated event ID and matching payload as a successful no-op.
+Reusing an event ID for different data is rejected. Product/outbox persistence
+and inventory/processed-marker persistence each use one local transaction.
+
+### Authenticated checkout
+
+```text
+login through gateway
+  -> gateway validates the JWT through auth-service gRPC
+  -> gateway forwards the authenticated user ID to cart-service
+  -> cart-service stores a product/SKU/price snapshot
+  -> client starts checkout with a reusable idempotency key
+  -> checkout reserves every inventory item in one local transaction
+  -> order-service atomically creates the order and its item snapshots
+  -> order-service calculates the total from the submitted cart snapshots
+  -> checkout commits the inventory reservation
+  -> cart-service marks the cart CHECKED_OUT
+```
+
+If order creation fails after reservation, `cart-service` calls
+`ReleaseStock`. That is a compensating action, not an ACID transaction across
+services. Ambiguous outcomes and failed compensation are recorded on the
+checkout attempt for retry; there is not yet a background reconciliation
+worker.
+
+Each checkout intent requires a caller-generated UUID v4 `Idempotency-Key`.
+Reuse that key only when retrying the same cart checkout:
+
+- `200 OK` means the checkout completed. The response includes the stable
+  `checkoutId`, `status: "COMPLETED"`, the original `orderId`, and the checked-out
+  cart.
+- `202 Accepted` means the non-terminal attempt was persisted with a recovery
+  action. Poll `GET /api/checkouts/:checkoutId` or retry the same checkout POST
+  with the same key.
+- `400 Bad Request` means the checkout input is malformed or the stored attempt
+  ended in a terminal failure.
+- `409 Conflict` means the key belongs to another cart or the cart is already
+  frozen by another checkout key.
+
+An API retry actively resumes the stored action. The service does not yet run a
+background reconciliation worker, so pending attempts do not advance without a
+caller retry.
+
+## Implemented Guarantees
+
+- Inventory validates the full stock request before applying changes.
+- Conditional stock updates and a transaction prevent available quantity from
+  going below zero during competing reservations.
+- A `(cart_id, product_sku_id)` reservation key makes an identical reservation
+  retry a no-op while it remains `RESERVED`.
+- Successful orders commit their reservations atomically. Commit retries are
+  no-ops, reduce only reserved quantity, and never restore available quantity.
+- Product event IDs are stored in `processed_product_events`.
+- Order and order-item insertion is atomic inside `order_db`.
+- Cart items and order items retain product snapshots; there are no
+  cross-database joins.
+- The cart migration uses a partial unique index to enforce at most one
+  `ACTIVE` cart per user.
+- Checkout attempts persist an immutable item snapshot and use a unique
+  `(user_id, idempotency_key)` identity.
+- A unique checkout attempt per cart prevents two keys from checking out the
+  same cart, and cart items are frozen after checkout starts.
+- Orders use a unique checkout ID, allowing an ambiguous create response to be
+  resolved without creating another order.
+- Unknown order outcomes keep inventory reserved and persist `CHECK_ORDER`;
+  retries query the order before issuing another idempotent create request.
+
+These guarantees rely on local transactions and replay-safe coordination; they
+do not create a distributed ACID transaction.
 
 ## Current API Surface
 
@@ -56,23 +174,44 @@ If order creation fails after inventory reservation, `cart-service` calls invent
 - `POST /api/cart-items`
 - `PUT /api/cart-items/:cartItemId`
 - `DELETE /api/cart-items/:cartItemId`
-- `POST /api/carts/:cartId/checkout`
+- `POST /api/carts/:cartId/checkout` (requires a UUID v4 `Idempotency-Key`
+  header; returns `200` when complete or `202` when recovery is pending)
+- `GET /api/checkouts/:checkoutId` (returns only the authenticated owner's
+  durable checkout status, cart and order IDs, and attempt timestamps)
 - Swagger UI: `GET /docs`
 
-All gateway routes except `POST /api/auth/login` require a bearer token. The
-gateway validates tokens through auth-service gRPC. For cart routes, the gateway
-passes the authenticated user id to cart-service through the internal
-`x-user-id` header.
+All `/api` routes listed above except `POST /api/auth/login` require a bearer
+token. The public `/health`, `/hello`, and `/docs` surfaces do not. The gateway
+validates tokens through auth-service gRPC. For cart routes, it passes the
+authenticated user ID to cart-service through the internal `x-user-id` header.
 
 ### gRPC Contracts
 
 - Auth: `Login`, `ValidateToken`
 - Inventory: `ReserveStock`, `ReleaseStock`
-- Order: `CreateOrder`
+- Order: `CreateOrder`, `GetOrderByCheckoutId`
 
 Shared protobuf files live in `libs/proto`.
 
+## Technology Choices
+
+| Technology                    | Use in this project                                                   | Main trade-off                                                                     |
+| ----------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| NestJS + TypeScript           | Modules, dependency injection, DTO validation, HTTP and gRPC adapters | Productive structure, with more framework ceremony than a small service requires   |
+| Prisma + PostgreSQL           | Separate schema and database per stateful service                     | Strong local transactions, but no cross-service transaction or join                |
+| REST/JSON                     | Public gateway and simple internal catalog/cart calls                 | Easy to inspect; weaker contract enforcement than Protobuf                         |
+| gRPC + Protobuf               | Auth validation and checkout commands                                 | Typed and compact; harder to debug manually and currently lacks deadlines          |
+| Redpanda/Kafka API + Protobuf | Asynchronous `ProductCreated` delivery                                | Decouples inventory, while at-least-once delivery requires an idempotent consumer   |
+| JWT + bcrypt                  | Authentication and password verification                              | Stateless tokens scale well; revocation and role authorization are not implemented |
+| React + Vite                  | Focused demo UI                                                       | Improves presentation but is not the architectural focus                           |
+
 ## Local Setup
+
+Prerequisites:
+
+- Node.js 22 or newer
+- npm 10 or newer
+- Docker with the Compose plugin
 
 Install dependencies:
 
@@ -91,6 +230,10 @@ Start local infrastructure:
 ```bash
 docker compose up -d
 ```
+
+Docker Compose starts the five PostgreSQL databases and Redpanda. The six
+application services run on the host; the checked-in application `Dockerfile`
+is not currently a verified production deployment path.
 
 Generate Prisma clients:
 
@@ -111,6 +254,9 @@ npm run prisma:inventory:migrate
 npm run prisma:cart:migrate
 npm run prisma:order:migrate
 ```
+
+For a reproducible local setup that applies existing migrations without
+creating new ones, use the matching `prisma:*:deploy` scripts instead.
 
 Seed available demo data:
 
@@ -145,7 +291,14 @@ npm run start:dev:order
 npm run build:all
 npm run lint
 npm test
+npm run frontend:build
+npm run frontend:lint
 ```
+
+Vitest is configured for colocated `*.spec.ts` files. Focused suites cover auth,
+inventory reserve/release, order idempotency, checkout recovery, selected Prisma
+adapter behavior, and gateway checkout mapping. PostgreSQL and Kafka-dependent
+outbox scenarios run separately through `npm run test:integration`.
 
 ## Basic Local Verification
 
@@ -178,7 +331,40 @@ scripts/demo-checkout.sh
 
 The script logs in as the seeded user, reads products through the gateway, adds a
 seeded SKU to the authenticated user's cart, reads the active cart, and checks
-out. A successful run prints an `orderId`.
+out. It generates one UUID v4 `Idempotency-Key` for the checkout intent and
+prints both the checkout and order IDs.
+
+To reproduce the replay, conflict, and lost-order-response sprint scenarios,
+start the demo with its explicit development-only fault enabled, then run the
+verification in another terminal:
+
+```bash
+ORDER_DEMO_LOST_RESPONSE_AFTER=1 npm run demo
+npm run verify:checkout-sprint
+```
+
+The verification resets local cart, order, and reservation transaction data,
+then asserts the HTTP responses and physical order/reservation row counts. The
+fault is disabled when `NODE_ENV=production`.
+
+Verify the cart, order, and inventory migrations against empty, populated
+legacy, and current local databases with:
+
+```bash
+npm run verify:migrations
+```
+
+Verify product creation during a broker outage, duplicate Kafka delivery,
+product/outbox rollback, and competing outbox workers with:
+
+```bash
+npm run test:integration
+```
+
+This command briefly stops and restarts the local Redpanda container. It uses a
+unique Kafka topic, disposable PostgreSQL databases, isolated application ports,
+and bounded state polling. The topic, databases, and service processes are
+removed when the command exits.
 
 Seeded demo credentials:
 
@@ -186,6 +372,74 @@ Seeded demo credentials:
 email: testuser@test.com
 password: password123
 ```
+
+## Frontend Demo
+
+The repository includes a focused React + Vite demo client in `frontend/`. It
+uses shadcn/ui components, talks only to the public gateway, and covers login,
+catalog search, product event publishing, cart updates, and checkout UI.
+
+### One-command launch
+
+After the initial `npm install`, start the complete local demo from the repository
+root:
+
+```bash
+npm run demo
+```
+
+The command starts Docker infrastructure, prepares and seeds the databases,
+builds and launches all six services, and starts the React frontend. It prints the
+frontend URL and seeded credentials when every health check passes. If ports 4000
+or 5173 are already occupied, it automatically selects an available demo port.
+
+Press `Ctrl+C` to stop the application processes. The Docker containers remain
+running for faster restarts; stop them separately with `docker compose down`.
+
+Runtime service logs are written to `.demo-logs/`.
+
+You can override the automatically selected public ports when needed:
+
+```bash
+DEMO_GATEWAY_PORT=4100 DEMO_FRONTEND_PORT=5174 npm run demo
+```
+
+`scripts/demo-checkout.sh` is the API-only smoke test and assumes the backend is
+already running. Set `DEMO_IDEMPOTENCY_KEY` to replay a specific checkout
+intent.
+
+### Manual launch
+
+After the backend services are running, start it from the repository root:
+
+```bash
+npm run frontend:install
+npm run frontend:dev
+```
+
+Open `http://localhost:5173`. The seeded credentials are prefilled for a smooth
+screen recording.
+
+![Marketflow catalog demo](docs/assets/frontend/catalog.png)
+
+<details>
+<summary>More demo screens</summary>
+
+### Gateway login
+
+![Marketflow login](docs/assets/frontend/login.png)
+
+### Successful distributed checkout
+
+![Marketflow checkout receipt](docs/assets/frontend/checkout-success.png)
+
+</details>
+
+For a short portfolio video, record this path: sign in → publish a product → add
+its SKU to cart → allow inventory to consume the event → change quantity →
+confirm checkout → hold on the created-order receipt.
+See [`frontend/README.md`](frontend/README.md) for gateway proxy configuration
+and the complete demo path.
 
 ## Architecture Notes
 
@@ -195,6 +449,62 @@ password: password123
 - Each business service owns its own Prisma schema and database.
 - `libs/common` is reserved for technical helpers only, not shared business logic.
 
-## Current Gaps To Finish Next
+## Technical Decisions And Trade-offs
 
-- Add integration tests for the full checkout workflow after unit-test practice.
+- **Orchestrated checkout:** `cart-service` owns the workflow because it already
+  owns the user's checkout intent. This is easy to follow in an interview, but
+  it couples cart availability to inventory and order availability.
+- **Compensation instead of distributed ACID:** PostgreSQL transactions protect
+  each service locally. Cross-service failure is handled by releasing stock
+  after an order error. This keeps the design realistic without adding 2PC.
+- **Snapshots:** cart and order rows retain name, SKU code, image, and price.
+  This avoids cross-service reads and preserves what the user saw. The current
+  order total is calculated server-side from the cart-provided snapshot; it is
+  not repriced against the live catalog during checkout.
+- **Central token validation:** the gateway asks auth-service to validate every
+  bearer token. That centralizes the trust decision but adds latency and makes
+  auth-service a synchronous dependency for all protected routes.
+- **Thin gateway:** it validates and forwards; catalog, cart, stock, and order
+  rules stay in their owning services.
+
+## Current Limitations
+
+- Unit coverage plus focused PostgreSQL and Kafka product/outbox coverage exist,
+  but there are still no complete checkout end-to-end tests.
+- Reconciliation depends on a caller retrying the same checkout key; there is no
+  worker to process pending attempts automatically after a restart.
+- The frontend and demo checkout script do not yet send the required
+  `Idempotency-Key` header.
+- Committed and released reservations do not expire or get archived yet.
+- JWT authentication exists, but role-based authorization does not. Any
+  authenticated gateway user can call catalog mutation routes, and `sellerId`
+  is accepted from the request.
+- Internal services trust direct network access and `cart-service` trusts the
+  gateway-provided `x-user-id` header. There is no mTLS or service identity.
+- Product updates/deletes do not publish inventory synchronization events.
+- Service clients do not define explicit deadlines, retries, circuit breakers,
+  or backoff policies.
+- Health endpoints are process liveness responses; they do not verify database,
+  broker, or downstream readiness.
+- Observability is limited to Nest logs and basic gateway request timing. There
+  are no correlation IDs, metrics, distributed traces, or alerting.
+- The application `Dockerfile` and production deployment workflow are not
+  complete; Docker Compose is currently for local infrastructure only.
+
+Registration, payment processing, shipping, order history, cancellation,
+search infrastructure, caching, Kubernetes, service mesh, and multi-region
+operation are intentionally outside the current demo scope.
+
+## Recommended Next Work
+
+1. Finish the checkout milestone: update clients and run durable reconciliation
+   work automatically.
+2. Add PostgreSQL and transport integration tests plus happy-path, replay, and
+   failure-path end-to-end tests.
+3. Add operational controls for replaying failed outbox events and monitoring backlog age.
+4. Add catalog authorization, request deadlines, correlation IDs, and a
+   reproducible deployment artifact.
+
+See the [Development Guide](docs/development-guide.md) for contribution rules
+and the [Roadmap and Handoff](docs/roadmap.md) for detailed priorities,
+acceptance criteria, and reusable context for future prompts.

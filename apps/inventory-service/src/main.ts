@@ -11,6 +11,8 @@ async function bootstrap() {
     process.env.INVENTORY_GRPC_URL ??
     `0.0.0.0:${process.env.INVENTORY_GRPC_PORT ?? 9003}`;
 
+  app.enableShutdownHooks();
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

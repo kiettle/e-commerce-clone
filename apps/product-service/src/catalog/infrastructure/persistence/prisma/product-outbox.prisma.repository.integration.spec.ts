@@ -1,7 +1,10 @@
 import { PrismaPg } from '@prisma/adapter-pg';
+import { ConfigService } from '@nestjs/config';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../../../../../../../prisma/generated/product';
 import { ProductOutboxStatus } from '../../../application/enums/product-outbox-status.enum';
+import { ProductEventTransportPort } from '../../../application/ports/product-event-transport.port';
+import { ProductOutboxPublisherWorker } from '../../messaging/product-outbox-publisher.worker';
 import { PrismaProductOutboxRepository } from './product-outbox.prisma.repository';
 import { PrismaService } from './prisma.service';
 
@@ -235,6 +238,59 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
     });
   });
 
+  it('publishes every due event with two competing workers', async () => {
+    await Promise.all(
+      Array.from({ length: 6 }, (_, index) =>
+        insertEvent({
+          id: eventId(index + 1),
+          createdAt: new Date(`2026-09-20T10:00:0${index + 1}.000Z`),
+          nextAttemptAt: new Date(0),
+        }),
+      ),
+    );
+    const publishedByA: string[] = [];
+    const publishedByB: string[] = [];
+    const workerA = new ProductOutboxPublisherWorker(
+      repository,
+      recordingTransport(publishedByA),
+      workerConfig(),
+    );
+    const workerB = new ProductOutboxPublisherWorker(
+      repository,
+      recordingTransport(publishedByB),
+      workerConfig(),
+    );
+
+    workerA.onApplicationBootstrap();
+    workerB.onApplicationBootstrap();
+
+    try {
+      await waitFor(async () => {
+        const published = await prisma.productOutboxEvent.count({
+          where: { status: ProductOutboxStatus.Published },
+        });
+        return published === 6;
+      });
+    } finally {
+      await Promise.all([workerA.onModuleDestroy(), workerB.onModuleDestroy()]);
+    }
+
+    const publishedIds = [...publishedByA, ...publishedByB];
+    expect(publishedIds).toHaveLength(6);
+    expect(new Set(publishedIds).size).toBe(6);
+    await expect(
+      prisma.productOutboxEvent.count({
+        where: {
+          OR: [
+            { status: { not: ProductOutboxStatus.Published } },
+            { leaseOwner: { not: null } },
+            { leaseUntil: { not: null } },
+          ],
+        },
+      }),
+    ).resolves.toBe(0);
+  });
+
   function claimRequest(leaseOwner: string, limit = 10) {
     return { limit, leaseOwner, now, leaseUntil };
   }
@@ -279,4 +335,42 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
 
 function eventId(sequence: number): string {
   return `550e8400-e29b-41d4-a716-${sequence.toString().padStart(12, '0')}`;
+}
+
+function recordingTransport(publishedIds: string[]): ProductEventTransportPort {
+  return {
+    publish: async (event) => {
+      publishedIds.push(event.eventId);
+    },
+  };
+}
+
+function workerConfig(): ConfigService {
+  const values: Record<string, number> = {
+    PRODUCT_OUTBOX_POLL_INTERVAL_MS: 10,
+    PRODUCT_OUTBOX_BATCH_SIZE: 2,
+    PRODUCT_OUTBOX_LEASE_DURATION_MS: 1_000,
+    PRODUCT_OUTBOX_SHUTDOWN_TIMEOUT_MS: 1_000,
+    PRODUCT_OUTBOX_MAX_ATTEMPTS: 3,
+    PRODUCT_OUTBOX_RETRY_BASE_DELAY_MS: 10,
+    PRODUCT_OUTBOX_RETRY_MAX_DELAY_MS: 100,
+  };
+
+  return {
+    get: (name: string) => values[name],
+  } as ConfigService;
+}
+
+async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 3_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (await predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`Condition was not met within ${timeoutMs}ms.`);
 }

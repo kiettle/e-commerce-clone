@@ -27,6 +27,8 @@
     "prisma:order:migrate": "prisma migrate dev --config apps/order-service/prisma/prisma.config.ts",
     "prisma:order:deploy": "prisma migrate deploy --config apps/order-service/prisma/prisma.config.ts",
     "demo:seed": "npm run prisma:auth:seed && npm run prisma:product:seed && npm run prisma:inventory:seed",
+    "verify:checkout-sprint": "bash scripts/verify-checkout-sprint.sh",
+    "verify:migrations": "bash scripts/verify-migrations.sh",
     "start:dev:gateway": "nest start gateway --watch",
     "start:dev:auth": "nest start auth-service --watch",
     "start:dev:product": "nest start product-service --watch",
@@ -45,6 +47,7 @@
     "frontend:build": "npm --prefix frontend run build",
     "frontend:lint": "npm --prefix frontend run lint",
     "test": "vitest run",
+    "test:integration": "bash scripts/test-product-outbox-integration.sh",
     "test:watch": "vitest"
   },
   "dependencies": {
