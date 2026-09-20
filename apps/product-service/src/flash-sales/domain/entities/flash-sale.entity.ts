@@ -7,6 +7,7 @@ import { FlashSaleItemEntity } from './flash-sale-item.entity';
 export interface FlashSaleEntityProps {
   id?: bigint;
   name: string;
+  description?: string | null;
   startsAt: Date;
   endsAt: Date;
   status?: FlashSaleStatus;
@@ -17,6 +18,7 @@ export interface FlashSaleEntityProps {
 
 export interface FlashSaleChanges {
   name?: string;
+  description?: string | null;
   startsAt?: Date;
   endsAt?: Date;
   items?: FlashSaleItemEntity[];
@@ -34,6 +36,7 @@ export class FlashSaleEntity {
   readonly updatedAt?: Date;
 
   private currentName: string;
+  private currentDescription: string | null;
   private currentStartsAt: Date;
   private currentEndsAt: Date;
   private currentStatus: FlashSaleStatus;
@@ -47,6 +50,7 @@ export class FlashSaleEntity {
 
     this.id = props.id;
     this.currentName = props.name;
+    this.currentDescription = props.description ?? null;
     this.currentStartsAt = new Date(props.startsAt.getTime());
     this.currentEndsAt = new Date(props.endsAt.getTime());
     this.currentStatus = status;
@@ -61,6 +65,10 @@ export class FlashSaleEntity {
 
   get startsAt(): Date {
     return new Date(this.currentStartsAt.getTime());
+  }
+
+  get description(): string | null {
+    return this.currentDescription;
   }
 
   get endsAt(): Date {
@@ -103,6 +111,9 @@ export class FlashSaleEntity {
     this.validateItems(items);
 
     this.currentName = changes.name ?? this.currentName;
+    if (changes.description !== undefined) {
+      this.currentDescription = changes.description;
+    }
     this.currentStartsAt = new Date(startsAt.getTime());
     this.currentEndsAt = new Date(endsAt.getTime());
     this.currentItems = [...items];
@@ -114,6 +125,11 @@ export class FlashSaleEntity {
       throw new InvalidFlashSaleError('A flash sale must have an item before scheduling.');
     }
     this.currentStatus = FlashSaleStatus.Scheduled;
+  }
+
+  cancel(): void {
+    this.ensureDraft();
+    this.currentStatus = FlashSaleStatus.Cancelled;
   }
 
   private ensureDraft(): void {

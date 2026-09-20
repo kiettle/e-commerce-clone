@@ -80,6 +80,13 @@ describe('FlashSaleEntity', () => {
 
     expect(() => flashSale.update({ name: 'Changed sale' })).toThrow(FlashSaleNotDraftError);
   });
+
+  it('does not allow a cancelled sale to change', () => {
+    const flashSale = createFlashSale();
+    flashSale.cancel();
+
+    expect(() => flashSale.update({ name: 'Changed sale' })).toThrow(FlashSaleNotDraftError);
+  });
 });
 
 function createScheduledSale(): FlashSaleEntity {
@@ -106,7 +113,7 @@ function createItem(
 ): FlashSaleItemEntity {
   return new FlashSaleItemEntity({
     productSkuId,
-    regularPrice: 100,
+    originalPrice: 100,
     salePrice: 80,
     quantity: 10,
     ...overrides,

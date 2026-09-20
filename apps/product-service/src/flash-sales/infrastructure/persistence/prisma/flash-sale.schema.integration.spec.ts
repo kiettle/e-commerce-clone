@@ -76,11 +76,11 @@ describeWithDatabase('flash-sale database constraints', () => {
   });
 
   it.each([
-    { quantity: 0, regularPrice: 100, salePrice: 80 },
-    { quantity: 1, regularPrice: 0, salePrice: 1 },
-    { quantity: 1, regularPrice: 100, salePrice: 0 },
-    { quantity: 1, regularPrice: 100, salePrice: 100 },
-    { quantity: 1, regularPrice: 100, salePrice: 101 },
+    { quantity: 0, originalPrice: 100, salePrice: 80 },
+    { quantity: 1, originalPrice: 0, salePrice: 1 },
+    { quantity: 1, originalPrice: 100, salePrice: 0 },
+    { quantity: 1, originalPrice: 100, salePrice: 100 },
+    { quantity: 1, originalPrice: 100, salePrice: 101 },
   ])('rejects invalid quantity or price values: %o', async (item) => {
     await expect(createFlashSale({}, item)).rejects.toBeDefined();
   });
@@ -107,7 +107,7 @@ describeWithDatabase('flash-sale database constraints', () => {
     } = {},
     itemOverrides: {
       quantity?: number;
-      regularPrice?: number;
+      originalPrice?: number;
       salePrice?: number;
     } = {},
   ) {
@@ -128,13 +128,13 @@ describeWithDatabase('flash-sale database constraints', () => {
   function validItem(
     overrides: {
       quantity?: number;
-      regularPrice?: number;
+      originalPrice?: number;
       salePrice?: number;
     } = {},
   ) {
     return {
       productSkuId,
-      regularPrice: 100,
+      originalPrice: 100,
       salePrice: 80,
       quantity: 10,
       ...overrides,

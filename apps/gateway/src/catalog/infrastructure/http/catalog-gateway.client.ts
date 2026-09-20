@@ -11,6 +11,11 @@ import {
   SearchProductsQueryDto,
   UpdateProductRequestDto,
 } from '../../presentation/http/dto/product.dto';
+import {
+  CreateFlashSaleRequestDto,
+  FlashSaleResponseDto,
+  UpdateFlashSaleRequestDto,
+} from '../../presentation/http/dto/flash-sale.dto';
 
 @Injectable()
 export class CatalogGatewayClient {
@@ -61,10 +66,7 @@ export class CatalogGatewayClient {
     });
   }
 
-  updateProduct(
-    productId: number,
-    body: UpdateProductRequestDto,
-  ): Promise<ProductResponseDto> {
+  updateProduct(productId: number, body: UpdateProductRequestDto): Promise<ProductResponseDto> {
     return this.httpClient.request<ProductResponseDto>({
       serviceName: 'product-service',
       baseUrl: this.getProductServiceUrl(),
@@ -83,6 +85,47 @@ export class CatalogGatewayClient {
     });
   }
 
+  createFlashSale(body: CreateFlashSaleRequestDto): Promise<FlashSaleResponseDto> {
+    return this.httpClient.request<FlashSaleResponseDto>({
+      serviceName: 'product-service',
+      baseUrl: this.getProductServiceUrl(),
+      path: '/api/flash-sales',
+      method: 'POST',
+      body,
+    });
+  }
+
+  updateFlashSale(
+    flashSaleId: number,
+    body: UpdateFlashSaleRequestDto,
+  ): Promise<FlashSaleResponseDto> {
+    return this.httpClient.request<FlashSaleResponseDto>({
+      serviceName: 'product-service',
+      baseUrl: this.getProductServiceUrl(),
+      path: `/api/flash-sales/${flashSaleId}`,
+      method: 'PUT',
+      body,
+    });
+  }
+
+  cancelFlashSale(flashSaleId: number): Promise<FlashSaleResponseDto> {
+    return this.httpClient.request<FlashSaleResponseDto>({
+      serviceName: 'product-service',
+      baseUrl: this.getProductServiceUrl(),
+      path: `/api/flash-sales/${flashSaleId}`,
+      method: 'DELETE',
+    });
+  }
+
+  getFlashSale(flashSaleId: number): Promise<FlashSaleResponseDto> {
+    return this.httpClient.request<FlashSaleResponseDto>({
+      serviceName: 'product-service',
+      baseUrl: this.getProductServiceUrl(),
+      path: `/api/flash-sales/${flashSaleId}`,
+      method: 'GET',
+    });
+  }
+
   private getProductServiceUrl(): string {
     const explicitUrl = this.configService.get<string>('PRODUCT_SERVICE_URL');
 
@@ -90,8 +133,7 @@ export class CatalogGatewayClient {
       return explicitUrl;
     }
 
-    const port =
-      this.configService.get<string>('PRODUCT_SERVICE_PORT') ?? '4001';
+    const port = this.configService.get<string>('PRODUCT_SERVICE_PORT') ?? '4001';
 
     return `http://localhost:${port}`;
   }

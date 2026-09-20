@@ -105,30 +105,31 @@ model ProductOutboxEvent {
 }
 
 model FlashSale {
-  id        BigInt          @id @default(autoincrement())
-  name      String          @db.VarChar(255)
-  startsAt  DateTime        @map("starts_at")
-  endsAt    DateTime        @map("ends_at")
-  status    FlashSaleStatus @default(DRAFT)
-  createdAt DateTime        @default(now()) @map("created_at")
-  updatedAt DateTime        @updatedAt @map("updated_at")
-  items     FlashSaleItem[]
+  id          BigInt          @id @default(autoincrement())
+  name        String          @db.VarChar(255)
+  description String?
+  startsAt    DateTime        @map("starts_at")
+  endsAt      DateTime        @map("ends_at")
+  status      FlashSaleStatus @default(DRAFT)
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  items       FlashSaleItem[]
 
   @@index([status, startsAt, endsAt])
   @@map("flash_sales")
 }
 
 model FlashSaleItem {
-  id           BigInt     @id @default(autoincrement())
-  flashSaleId  BigInt     @map("flash_sale_id")
-  productSkuId BigInt     @map("product_sku_id")
-  regularPrice Decimal    @map("regular_price") @db.Decimal(10, 2)
-  salePrice    Decimal    @map("sale_price") @db.Decimal(10, 2)
-  quantity     Int
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-  flashSale    FlashSale  @relation(fields: [flashSaleId], references: [id], onDelete: Cascade)
-  productSku   ProductSku @relation(fields: [productSkuId], references: [id], onDelete: Restrict)
+  id            BigInt     @id @default(autoincrement())
+  flashSaleId   BigInt     @map("flash_sale_id")
+  productSkuId  BigInt     @map("product_sku_id")
+  originalPrice Decimal    @map("regular_price") @db.Decimal(10, 2)
+  salePrice     Decimal    @map("sale_price") @db.Decimal(10, 2)
+  quantity      Int
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  flashSale     FlashSale  @relation(fields: [flashSaleId], references: [id], onDelete: Cascade)
+  productSku    ProductSku @relation(fields: [productSkuId], references: [id], onDelete: Restrict)
 
   @@unique([flashSaleId, productSkuId])
   @@index([productSkuId])

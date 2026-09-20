@@ -106,5 +106,6 @@ import { ProductsController } from './presentation/http/products.controller';
       inject: [PRODUCT_OUTBOX_REPOSITORY, PRODUCT_EVENT_TRANSPORT, ConfigService],
     },
   ],
+  exports: [PrismaService],
 })
 export class CatalogModule {}
