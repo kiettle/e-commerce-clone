@@ -14,11 +14,15 @@ service InventoryService {
 message StockOperationRequest {
   int64 cart_id = 1;
   repeated StockItem items = 2;
+  string checkout_id = 3;
+  int64 user_id = 4;
 }
 
 message StockItem {
   int64 product_sku_id = 1;
   int32 quantity = 2;
+  optional int64 flash_sale_id = 3;
+  optional int64 flash_sale_item_id = 4;
 }
 
 message StockOperationResponse {

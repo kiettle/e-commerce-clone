@@ -9,6 +9,8 @@ export interface ProductSkuSnapshot {
   price: number;
   regularPrice: number;
   priceSource: 'REGULAR' | 'FLASH_SALE';
+  flashSaleId: bigint | null;
+  flashSaleItemId: bigint | null;
 }
 
 export interface ProductCatalogPort {

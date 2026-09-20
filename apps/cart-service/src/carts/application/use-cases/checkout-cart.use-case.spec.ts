@@ -21,7 +21,20 @@ describe('CheckoutCartUseCase', () => {
   const checkoutId = '018f47a1-7b72-4c7f-8c52-f06612de3377';
   const idempotencyKey = '550e8400-e29b-41d4-a716-446655440000';
   const command = { userId: 10n, cartId: 20n, idempotencyKey };
-  const stockItems = [{ productSkuId: 100n, quantity: 2 }];
+  const stockItems = [
+    {
+      productSkuId: 100n,
+      quantity: 2,
+      flashSaleId: null,
+      flashSaleItemId: null,
+    },
+  ];
+  const stockOperation = {
+    cartId: 20n,
+    checkoutId,
+    userId: 10n,
+    items: stockItems,
+  };
   const orderItems = [
     {
       productSkuId: 100n,
@@ -82,13 +95,7 @@ describe('CheckoutCartUseCase', () => {
       getOrderByCheckoutId: vi.fn(),
     };
     logger = { logInventoryReleaseFailure: vi.fn() };
-    useCase = new CheckoutCartUseCase(
-      carts,
-      attempts,
-      inventory,
-      orders,
-      logger,
-    );
+    useCase = new CheckoutCartUseCase(carts, attempts, inventory, orders, logger);
   });
 
   it('completes a new checkout and stores progress before each side effect', async () => {
@@ -124,28 +131,18 @@ describe('CheckoutCartUseCase', () => {
     });
 
     expect(attempts.startOrLoad).toHaveBeenCalledWith(10n, 20n, idempotencyKey);
-    expect(inventory.reserveStock).toHaveBeenCalledWith(20n, stockItems);
+    expect(inventory.reserveStock).toHaveBeenCalledWith(stockOperation);
     expect(attempts.markStockReserved).toHaveBeenCalledWith(checkoutId);
     expect(orders.getOrderByCheckoutId).not.toHaveBeenCalled();
-    expect(orders.createOrder).toHaveBeenCalledWith(
-      10n,
-      orderItems,
-      checkoutIdentity,
-    );
+    expect(orders.createOrder).toHaveBeenCalledWith(10n, orderItems, checkoutIdentity);
     expect(attempts.markOrderConfirmed).toHaveBeenCalledWith(checkoutId, 501n);
-    expect(inventory.commitStock).toHaveBeenCalledWith(20n, stockItems);
+    expect(inventory.commitStock).toHaveBeenCalledWith(stockOperation);
     expect(attempts.markStockCommitted).toHaveBeenCalledWith(checkoutId);
     expect(attempts.complete).toHaveBeenCalledWith(checkoutId, 501n);
     expect(attempts.startOrLoad).toHaveBeenCalledBefore(inventory.reserveStock);
-    expect(attempts.markStockReserved).toHaveBeenCalledBefore(
-      orders.createOrder,
-    );
-    expect(attempts.markOrderConfirmed).toHaveBeenCalledBefore(
-      inventory.commitStock,
-    );
-    expect(attempts.markStockCommitted).toHaveBeenCalledBefore(
-      attempts.complete,
-    );
+    expect(attempts.markStockReserved).toHaveBeenCalledBefore(orders.createOrder);
+    expect(attempts.markOrderConfirmed).toHaveBeenCalledBefore(inventory.commitStock);
+    expect(attempts.markStockCommitted).toHaveBeenCalledBefore(attempts.complete);
   });
 
   it('returns the original result for a completed retry without calling dependencies', async () => {
@@ -175,9 +172,7 @@ describe('CheckoutCartUseCase', () => {
   it('rejects the same key when it belongs to another cart', async () => {
     attempts.findByUserAndKey.mockResolvedValue(attempt({ cartId: 21n }));
 
-    await expect(useCase.execute(command)).rejects.toBeInstanceOf(
-      CheckoutConflictError,
-    );
+    await expect(useCase.execute(command)).rejects.toBeInstanceOf(CheckoutConflictError);
     expect(attempts.startOrLoad).not.toHaveBeenCalled();
     expect(inventory.reserveStock).not.toHaveBeenCalled();
   });
@@ -185,14 +180,10 @@ describe('CheckoutCartUseCase', () => {
   it('rejects another key for a cart that is already frozen', async () => {
     attempts.findByUserAndKey.mockResolvedValue(null);
     attempts.startOrLoad.mockRejectedValue(
-      new CheckoutConflictError(
-        'This cart already has a checkout attempt with another key.',
-      ),
+      new CheckoutConflictError('This cart already has a checkout attempt with another key.'),
     );
 
-    await expect(useCase.execute(command)).rejects.toBeInstanceOf(
-      CheckoutConflictError,
-    );
+    await expect(useCase.execute(command)).rejects.toBeInstanceOf(CheckoutConflictError);
     expect(inventory.reserveStock).not.toHaveBeenCalled();
   });
 
@@ -202,15 +193,47 @@ describe('CheckoutCartUseCase', () => {
       new InventoryReservationFailedError('Insufficient stock.', 'DEFINITE'),
     );
 
-    await expect(useCase.execute(command)).rejects.toBeInstanceOf(
-      CheckoutTerminalError,
-    );
-    expect(attempts.failAndAbandon).toHaveBeenCalledWith(
-      checkoutId,
-      'Insufficient stock.',
-    );
+    await expect(useCase.execute(command)).rejects.toBeInstanceOf(CheckoutTerminalError);
+    expect(attempts.failAndAbandon).toHaveBeenCalledWith(checkoutId, 'Insufficient stock.');
     expect(orders.createOrder).not.toHaveBeenCalled();
     expect(inventory.releaseStock).not.toHaveBeenCalled();
+  });
+
+  it('uses the sale context stored in the checkout snapshot', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(
+      attempt({
+        itemsSnapshot: [
+          {
+            productSkuId: '100',
+            productName: 'Example',
+            skuCode: 'SKU-100',
+            imageUrl: null,
+            price: '14.90',
+            quantity: 2,
+            flashSaleId: '200',
+            flashSaleItemId: '300',
+          },
+        ],
+      }),
+    );
+    inventory.reserveStock.mockRejectedValue(
+      new InventoryReservationFailedError('Insufficient stock.', 'DEFINITE'),
+    );
+
+    await expect(useCase.execute(command)).rejects.toBeInstanceOf(CheckoutTerminalError);
+    expect(inventory.reserveStock).toHaveBeenCalledWith({
+      cartId: 20n,
+      checkoutId,
+      userId: 10n,
+      items: [
+        {
+          productSkuId: 100n,
+          quantity: 2,
+          flashSaleId: 200n,
+          flashSaleItemId: 300n,
+        },
+      ],
+    });
   });
 
   it('stores RESERVE_STOCK when the inventory outcome is uncertain', async () => {
@@ -331,7 +354,7 @@ describe('CheckoutCartUseCase', () => {
       orderId: 501n,
     });
     expect(orders.createOrder).not.toHaveBeenCalled();
-    expect(inventory.commitStock).toHaveBeenCalledWith(20n, stockItems);
+    expect(inventory.commitStock).toHaveBeenCalledWith(stockOperation);
     expect(inventory.releaseStock).not.toHaveBeenCalled();
   });
 
@@ -400,19 +423,11 @@ describe('CheckoutCartUseCase', () => {
       }),
     );
 
-    await expect(useCase.execute(command)).rejects.toBeInstanceOf(
-      CheckoutTerminalError,
-    );
-    expect(attempts.markCompensating).toHaveBeenCalledWith(
-      checkoutId,
-      'Request hash is invalid.',
-    );
+    await expect(useCase.execute(command)).rejects.toBeInstanceOf(CheckoutTerminalError);
+    expect(attempts.markCompensating).toHaveBeenCalledWith(checkoutId, 'Request hash is invalid.');
     expect(inventory.releaseStock).toHaveBeenCalledTimes(1);
-    expect(inventory.releaseStock).toHaveBeenCalledWith(20n, stockItems);
-    expect(attempts.failAndAbandon).toHaveBeenCalledWith(
-      checkoutId,
-      'Request hash is invalid.',
-    );
+    expect(inventory.releaseStock).toHaveBeenCalledWith(stockOperation);
+    expect(attempts.failAndAbandon).toHaveBeenCalledWith(checkoutId, 'Request hash is invalid.');
   });
 
   it('does not release stock when another retry has already completed', async () => {

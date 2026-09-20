@@ -7,6 +7,8 @@ export interface CartItemSnapshotData {
   productName: string;
   imageUrl?: string | null;
   productSkuId: bigint;
+  flashSaleId?: bigint | null;
+  flashSaleItemId?: bigint | null;
   skuCode: string;
   price: number;
 }
@@ -19,11 +21,7 @@ export interface CartRepositoryPort {
     item: CartItemSnapshotData,
     quantity: number,
   ): Promise<CartEntity>;
-  updateItemQuantity(
-    userId: bigint,
-    cartItemId: bigint,
-    quantity: number,
-  ): Promise<CartEntity>;
+  updateItemQuantity(userId: bigint, cartItemId: bigint, quantity: number): Promise<CartEntity>;
   deleteItem(userId: bigint, cartItemId: bigint): Promise<CartEntity>;
   markCheckedOut(cartId: bigint): Promise<CartEntity>;
 }

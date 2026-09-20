@@ -19,6 +19,8 @@ describe('GetProductSkuSnapshotUseCase', () => {
         skuCode: 'KB-BLACK',
         regularPrice: 100,
         activeSalePrice,
+        flashSaleId: activeSalePrice === null ? null : 50n,
+        flashSaleItemId: activeSalePrice === null ? null : 501n,
       }),
     } as ProductSkuSnapshotRepositoryPort;
 

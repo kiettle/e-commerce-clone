@@ -14,6 +14,8 @@ describe('InternalProductSkusController', () => {
         regularPrice: 100,
         effectivePrice: 75,
         priceSource: 'FLASH_SALE',
+        flashSaleId: 50n,
+        flashSaleItemId: 501n,
       }),
     } as unknown as GetProductSkuSnapshotUseCase;
     const controller = new InternalProductSkusController(getSnapshot);
@@ -30,6 +32,8 @@ describe('InternalProductSkusController', () => {
       regularPrice: 100,
       effectivePrice: 75,
       priceSource: 'FLASH_SALE',
+      flashSaleId: '50',
+      flashSaleItemId: '501',
     });
     expect(response).not.toHaveProperty('availableQuantity');
     expect(response).not.toHaveProperty('quantity');

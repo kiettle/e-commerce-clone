@@ -14,6 +14,8 @@ export interface EffectiveProductSkuSnapshot {
   regularPrice: number;
   effectivePrice: number;
   priceSource: ProductPriceSource;
+  flashSaleId: bigint | null;
+  flashSaleItemId: bigint | null;
 }
 
 export class GetProductSkuSnapshotUseCase {
@@ -38,6 +40,8 @@ export class GetProductSkuSnapshotUseCase {
       regularPrice: snapshot.regularPrice,
       effectivePrice: hasActiveSale ? snapshot.activeSalePrice! : snapshot.regularPrice,
       priceSource: hasActiveSale ? ProductPriceSource.FlashSale : ProductPriceSource.Regular,
+      flashSaleId: snapshot.flashSaleId,
+      flashSaleItemId: snapshot.flashSaleItemId,
     };
   }
 }

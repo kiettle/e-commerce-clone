@@ -19,6 +19,8 @@ export interface ProductCreatedStockEvent {
 export interface StockOperationItem {
   productSkuId: bigint;
   quantity: number;
+  flashSaleId?: bigint | null;
+  flashSaleItemId?: bigint | null;
 }
 
 export interface InventoryRepositoryPort {

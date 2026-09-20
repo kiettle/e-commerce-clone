@@ -23,9 +23,7 @@ import { PrismaCartRepository } from './cart.prisma.repository';
 import { PrismaService } from './prisma.service';
 
 @Injectable()
-export class PrismaCheckoutAttemptRepository
-  implements CheckoutAttemptRepositoryPort
-{
+export class PrismaCheckoutAttemptRepository implements CheckoutAttemptRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
 
   async findById(checkoutId: string): Promise<CheckoutAttemptEntity | null> {
@@ -83,15 +81,11 @@ export class PrismaCheckoutAttemptRepository
         }
 
         if (cart.status !== CartStatus.Active) {
-          throw new InvalidCartOperationError(
-            'Only active carts can be checked out.',
-          );
+          throw new InvalidCartOperationError('Only active carts can be checked out.');
         }
 
         if (cart.items.length === 0) {
-          throw new InvalidCartOperationError(
-            'Cart must contain at least one item.',
-          );
+          throw new InvalidCartOperationError('Cart must contain at least one item.');
         }
 
         const hashInput = {
@@ -106,9 +100,20 @@ export class PrismaCheckoutAttemptRepository
             quantity: item.quantity,
           })),
         };
-        const canonical = JSON.parse(
-          serializeCheckoutRequest(hashInput),
-        ) as { items: CheckoutItemSnapshot[] };
+        const canonical = JSON.parse(serializeCheckoutRequest(hashInput)) as {
+          items: CheckoutItemSnapshot[];
+        };
+        const cartItemBySkuId = new Map(
+          cart.items.map((item) => [item.productSkuId.toString(), item]),
+        );
+        const itemsSnapshot = canonical.items.map((item) => {
+          const cartItem = cartItemBySkuId.get(item.productSkuId);
+          return {
+            ...item,
+            flashSaleId: cartItem?.flashSaleId?.toString() ?? null,
+            flashSaleItemId: cartItem?.flashSaleItemId?.toString() ?? null,
+          };
+        });
 
         return transaction.checkoutAttempt.create({
           data: {
@@ -116,8 +121,7 @@ export class PrismaCheckoutAttemptRepository
             cartId,
             idempotencyKey,
             requestHash: hashCheckoutRequest(hashInput),
-            itemsSnapshot:
-              canonical.items as unknown as Prisma.InputJsonValue,
+            itemsSnapshot: itemsSnapshot as unknown as Prisma.InputJsonValue,
             status: CheckoutStatus.Started,
             reconciliationAction: ReconciliationAction.ReserveStock,
           },
@@ -134,9 +138,7 @@ export class PrismaCheckoutAttemptRepository
 
       if (sameKey) {
         if (sameKey.cartId !== cartId) {
-          throw new CheckoutConflictError(
-            'This idempotency key belongs to another cart.',
-          );
+          throw new CheckoutConflictError('This idempotency key belongs to another cart.');
         }
 
         return sameKey;
@@ -157,62 +159,40 @@ export class PrismaCheckoutAttemptRepository
   }
 
   async markStockReserved(attemptId: string): Promise<CheckoutAttemptEntity> {
-    return this.transition(
-      attemptId,
-      ReconciliationAction.ReserveStock,
-      {
-        status: CheckoutStatus.StockReserved,
-        reconciliationAction: ReconciliationAction.CheckOrder,
-        lastError: null,
-        nextRetryAt: null,
-      },
-    );
+    return this.transition(attemptId, ReconciliationAction.ReserveStock, {
+      status: CheckoutStatus.StockReserved,
+      reconciliationAction: ReconciliationAction.CheckOrder,
+      lastError: null,
+      nextRetryAt: null,
+    });
   }
 
-  async markOrderConfirmed(
-    attemptId: string,
-    orderId: bigint,
-  ): Promise<CheckoutAttemptEntity> {
-    return this.transition(
-      attemptId,
-      ReconciliationAction.CheckOrder,
-      {
-        status: CheckoutStatus.OrderConfirmed,
-        orderId,
-        reconciliationAction: ReconciliationAction.CommitStock,
-        lastError: null,
-        nextRetryAt: null,
-      },
-    );
+  async markOrderConfirmed(attemptId: string, orderId: bigint): Promise<CheckoutAttemptEntity> {
+    return this.transition(attemptId, ReconciliationAction.CheckOrder, {
+      status: CheckoutStatus.OrderConfirmed,
+      orderId,
+      reconciliationAction: ReconciliationAction.CommitStock,
+      lastError: null,
+      nextRetryAt: null,
+    });
   }
 
   async markStockCommitted(attemptId: string): Promise<CheckoutAttemptEntity> {
-    return this.transition(
-      attemptId,
-      ReconciliationAction.CommitStock,
-      {
-        status: CheckoutStatus.StockCommitted,
-        reconciliationAction: ReconciliationAction.CompleteCart,
-        lastError: null,
-        nextRetryAt: null,
-      },
-    );
+    return this.transition(attemptId, ReconciliationAction.CommitStock, {
+      status: CheckoutStatus.StockCommitted,
+      reconciliationAction: ReconciliationAction.CompleteCart,
+      lastError: null,
+      nextRetryAt: null,
+    });
   }
 
-  async markCompensating(
-    attemptId: string,
-    error: string,
-  ): Promise<CheckoutAttemptEntity> {
-    return this.transition(
-      attemptId,
-      ReconciliationAction.CheckOrder,
-      {
-        status: CheckoutStatus.Compensating,
-        reconciliationAction: ReconciliationAction.ReleaseStock,
-        lastError: error,
-        nextRetryAt: null,
-      },
-    );
+  async markCompensating(attemptId: string, error: string): Promise<CheckoutAttemptEntity> {
+    return this.transition(attemptId, ReconciliationAction.CheckOrder, {
+      status: CheckoutStatus.Compensating,
+      reconciliationAction: ReconciliationAction.ReleaseStock,
+      lastError: error,
+      nextRetryAt: null,
+    });
   }
 
   async markReconciliationRequired(
@@ -255,9 +235,7 @@ export class PrismaCheckoutAttemptRepository
         attempt.reconciliationAction !== ReconciliationAction.CompleteCart ||
         attempt.orderId !== orderId
       ) {
-        throw new InvalidCartOperationError(
-          'Checkout attempt is not ready to complete the cart.',
-        );
+        throw new InvalidCartOperationError('Checkout attempt is not ready to complete the cart.');
       }
 
       const updatedCart = await transaction.cart.update({
@@ -298,9 +276,7 @@ export class PrismaCheckoutAttemptRepository
         attempt.reconciliationAction !== ReconciliationAction.ReleaseStock &&
         attempt.reconciliationAction !== ReconciliationAction.ReserveStock
       ) {
-        throw new InvalidCartOperationError(
-          'Checkout attempt is not ready to fail.',
-        );
+        throw new InvalidCartOperationError('Checkout attempt is not ready to fail.');
       }
 
       await transaction.cart.update({
@@ -342,10 +318,7 @@ export class PrismaCheckoutAttemptRepository
   }
 }
 
-async function lockCart(
-  transaction: Prisma.TransactionClient,
-  cartId: bigint,
-): Promise<void> {
+async function lockCart(transaction: Prisma.TransactionClient, cartId: bigint): Promise<void> {
   await transaction.$queryRaw`
     SELECT "id" FROM "carts" WHERE "id" = ${cartId} FOR UPDATE
   `;
@@ -367,24 +340,17 @@ function toDomain(attempt: PrismaCheckoutAttempt): CheckoutAttemptEntity {
     cartId: attempt.cartId,
     idempotencyKey: attempt.idempotencyKey,
     requestHash: attempt.requestHash,
-    itemsSnapshot:
-      attempt.itemsSnapshot as unknown as CheckoutItemSnapshot[],
+    itemsSnapshot: attempt.itemsSnapshot as unknown as CheckoutItemSnapshot[],
     status: attempt.status as CheckoutStatus,
     orderId: attempt.orderId,
     retryCount: attempt.retryCount,
     lastError: attempt.lastError,
-    reconciliationAction:
-      attempt.reconciliationAction as ReconciliationAction | null,
+    reconciliationAction: attempt.reconciliationAction as ReconciliationAction | null,
     createdAt: attempt.createdAt,
     updatedAt: attempt.updatedAt,
   });
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'P2002'
-  );
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }

@@ -13,6 +13,8 @@ interface ProductSkuSnapshotResponse {
   regularPrice: number;
   effectivePrice: number;
   priceSource: ProductPriceSource;
+  flashSaleId: string | null;
+  flashSaleItemId: string | null;
 }
 
 @Controller('internal/product-skus')
@@ -31,6 +33,8 @@ export class InternalProductSkusController {
       ...snapshot,
       productId: snapshot.productId.toString(),
       productSkuId: snapshot.productSkuId.toString(),
+      flashSaleId: snapshot.flashSaleId?.toString() ?? null,
+      flashSaleItemId: snapshot.flashSaleItemId?.toString() ?? null,
     };
   }
 }

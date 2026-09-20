@@ -17,6 +17,8 @@ describe('ProductHttpCatalogClient', () => {
           regularPrice: 100,
           effectivePrice: 75,
           priceSource: 'FLASH_SALE',
+          flashSaleId: '50',
+          flashSaleItemId: '501',
         }),
         { status: 200 },
       ),
@@ -33,6 +35,8 @@ describe('ProductHttpCatalogClient', () => {
       price: 75,
       regularPrice: 100,
       priceSource: 'FLASH_SALE',
+      flashSaleId: 50n,
+      flashSaleItemId: 501n,
     });
     expect(fetchMock).toHaveBeenCalledWith(
       'http://product-service:4001/internal/product-skus/101/snapshot',

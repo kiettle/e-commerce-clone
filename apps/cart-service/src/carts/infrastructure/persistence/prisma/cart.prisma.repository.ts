@@ -86,6 +86,8 @@ export class PrismaCartRepository implements CartRepositoryPort {
             imageUrl: item.imageUrl,
             skuCode: item.skuCode,
             price: item.price,
+            flashSaleId: item.flashSaleId,
+            flashSaleItemId: item.flashSaleItemId,
             quantity: {
               increment: quantity,
             },
@@ -99,6 +101,8 @@ export class PrismaCartRepository implements CartRepositoryPort {
             productName: item.productName,
             imageUrl: item.imageUrl,
             productSkuId: item.productSkuId,
+            flashSaleId: item.flashSaleId,
+            flashSaleItemId: item.flashSaleItemId,
             skuCode: item.skuCode,
             price: item.price,
             quantity,
@@ -118,16 +122,9 @@ export class PrismaCartRepository implements CartRepositoryPort {
     quantity: number,
   ): Promise<CartEntity> {
     const cart = await this.prisma.$transaction(async (transaction) => {
-      const cartItem = await this.findCartItemForUser(
-        transaction,
-        userId,
-        cartItemId,
-      );
+      const cartItem = await this.findCartItemForUser(transaction, userId, cartItemId);
       await lockCart(transaction, cartItem.cartId);
-      const activeCart = await this.findActiveCartById(
-        transaction,
-        cartItem.cartId,
-      );
+      const activeCart = await this.findActiveCartById(transaction, cartItem.cartId);
       assertActiveCart(activeCart);
       await assertCartNotFrozen(transaction, cartItem.cartId);
 
@@ -150,16 +147,9 @@ export class PrismaCartRepository implements CartRepositoryPort {
 
   async deleteItem(userId: bigint, cartItemId: bigint): Promise<CartEntity> {
     const cart = await this.prisma.$transaction(async (transaction) => {
-      const cartItem = await this.findCartItemForUser(
-        transaction,
-        userId,
-        cartItemId,
-      );
+      const cartItem = await this.findCartItemForUser(transaction, userId, cartItemId);
       await lockCart(transaction, cartItem.cartId);
-      const activeCart = await this.findActiveCartById(
-        transaction,
-        cartItem.cartId,
-      );
+      const activeCart = await this.findActiveCartById(transaction, cartItem.cartId);
       assertActiveCart(activeCart);
       await assertCartNotFrozen(transaction, cartItem.cartId);
 
@@ -269,6 +259,8 @@ export class PrismaCartRepository implements CartRepositoryPort {
       productName: item.productName,
       imageUrl: item.imageUrl,
       productSkuId: item.productSkuId,
+      flashSaleId: item.flashSaleId,
+      flashSaleItemId: item.flashSaleItemId,
       skuCode: item.skuCode,
       price: Number(item.price),
       quantity: item.quantity,
@@ -292,27 +284,19 @@ function assertActiveCart(cart: PrismaCart): void {
   }
 }
 
-async function lockCart(
-  transaction: TransactionClient,
-  cartId: bigint,
-): Promise<void> {
+async function lockCart(transaction: TransactionClient, cartId: bigint): Promise<void> {
   await transaction.$queryRaw`
     SELECT "id" FROM "carts" WHERE "id" = ${cartId} FOR UPDATE
   `;
 }
 
-async function assertCartNotFrozen(
-  transaction: TransactionClient,
-  cartId: bigint,
-): Promise<void> {
+async function assertCartNotFrozen(transaction: TransactionClient, cartId: bigint): Promise<void> {
   const attempt = await transaction.checkoutAttempt.findUnique({
     where: { cartId },
     select: { id: true },
   });
 
   if (attempt) {
-    throw new InvalidCartOperationError(
-      'Cart items cannot be changed after checkout starts.',
-    );
+    throw new InvalidCartOperationError('Cart items cannot be changed after checkout starts.');
   }
 }

@@ -10,24 +10,13 @@ import { OrderCreationFailedError } from '../../domain/errors/order-creation-fai
 import { CartRepositoryPort } from '../../domain/repositories/cart.repository.port';
 import { CheckoutAttemptRepositoryPort } from '../../domain/repositories/checkout-attempt.repository.port';
 import { CheckoutCartCommand } from '../dto/checkout-cart.command';
-import {
-  CheckoutCartResult,
-  PendingCheckoutResult,
-} from '../dto/checkout-cart.result';
+import { CheckoutCartResult, PendingCheckoutResult } from '../dto/checkout-cart.result';
 import { CheckoutFailureLoggerPort } from '../ports/checkout-failure-logger.port';
-import {
-  InventoryStockPort,
-  StockOperationItem,
-} from '../ports/inventory-stock.port';
-import {
-  OrderCreateItem,
-  OrderCreateResult,
-  OrderCreatorPort,
-} from '../ports/order-creator.port';
+import { InventoryStockPort, StockOperationItem } from '../ports/inventory-stock.port';
+import { OrderCreateItem, OrderCreateResult, OrderCreatorPort } from '../ports/order-creator.port';
 import { assertPositiveId } from './get-active-cart.use-case';
 
-const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class CheckoutCartUseCase {
   constructor(
@@ -43,15 +32,10 @@ export class CheckoutCartUseCase {
     assertPositiveId(command.cartId, 'Cart ID must be greater than zero.');
     assertValidIdempotencyKey(command.idempotencyKey);
 
-    let attempt = await this.attempts.findByUserAndKey(
-      command.userId,
-      command.idempotencyKey,
-    );
+    let attempt = await this.attempts.findByUserAndKey(command.userId, command.idempotencyKey);
 
     if (attempt && attempt.cartId !== command.cartId) {
-      throw new CheckoutConflictError(
-        'This idempotency key belongs to another cart.',
-      );
+      throw new CheckoutConflictError('This idempotency key belongs to another cart.');
     }
 
     if (!attempt) {
@@ -65,17 +49,13 @@ export class CheckoutCartUseCase {
     return this.resume(attempt);
   }
 
-  private async resume(
-    attempt: CheckoutAttemptEntity,
-  ): Promise<CheckoutCartResult> {
+  private async resume(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
     if (attempt.status === CheckoutStatus.Completed) {
       return this.completedResult(attempt);
     }
 
     if (attempt.status === CheckoutStatus.Failed) {
-      throw new CheckoutTerminalError(
-        attempt.lastError ?? 'Checkout failed.',
-      );
+      throw new CheckoutTerminalError(attempt.lastError ?? 'Checkout failed.');
     }
 
     switch (attempt.reconciliationAction) {
@@ -90,25 +70,15 @@ export class CheckoutCartUseCase {
       case ReconciliationAction.ReleaseStock:
         return this.releaseStock(attempt, attempt.lastError ?? 'Checkout failed.');
       default:
-        throw new InvalidCartOperationError(
-          'Checkout attempt has no recovery action.',
-        );
+        throw new InvalidCartOperationError('Checkout attempt has no recovery action.');
     }
   }
 
-  private async reserveStock(
-    attempt: CheckoutAttemptEntity,
-  ): Promise<CheckoutCartResult> {
+  private async reserveStock(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
     try {
-      await this.inventory.reserveStock(
-        attempt.cartId,
-        toStockItems(attempt),
-      );
+      await this.inventory.reserveStock(toStockOperation(attempt));
     } catch (error) {
-      if (
-        error instanceof InventoryReservationFailedError &&
-        error.outcome === 'DEFINITE'
-      ) {
+      if (error instanceof InventoryReservationFailedError && error.outcome === 'DEFINITE') {
         await this.attempts.failAndAbandon(attempt.id, error.message);
         throw new CheckoutTerminalError(error.message);
       }
@@ -132,25 +102,17 @@ export class CheckoutCartUseCase {
     return this.resume(updatedAttempt);
   }
 
-  private async checkOrder(
-    attempt: CheckoutAttemptEntity,
-  ): Promise<CheckoutCartResult> {
+  private async checkOrder(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
     let existingOrder: OrderCreateResult;
 
     try {
       existingOrder = await this.orders.getOrderByCheckoutId(attempt.id);
     } catch (error) {
-      if (
-        error instanceof OrderCreationFailedError &&
-        error.outcome === 'NOT_FOUND'
-      ) {
+      if (error instanceof OrderCreationFailedError && error.outcome === 'NOT_FOUND') {
         return this.createOrder(attempt);
       }
 
-      if (
-        error instanceof OrderCreationFailedError &&
-        error.outcome === 'DEFINITE'
-      ) {
+      if (error instanceof OrderCreationFailedError && error.outcome === 'DEFINITE') {
         return this.startCompensation(attempt, error.message);
       }
 
@@ -162,33 +124,21 @@ export class CheckoutCartUseCase {
       return pending(attempt.id);
     }
 
-    const confirmed = await this.attempts.markOrderConfirmed(
-      attempt.id,
-      existingOrder.orderId,
-    );
+    const confirmed = await this.attempts.markOrderConfirmed(attempt.id, existingOrder.orderId);
     return this.resume(confirmed);
   }
 
-  private async createOrder(
-    attempt: CheckoutAttemptEntity,
-  ): Promise<CheckoutCartResult> {
+  private async createOrder(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
     let order: OrderCreateResult;
 
     try {
-      order = await this.orders.createOrder(
-        attempt.userId,
-        toOrderItems(attempt),
-        {
-          checkoutId: attempt.id,
-          cartId: attempt.cartId,
-          requestHash: attempt.requestHash,
-        },
-      );
+      order = await this.orders.createOrder(attempt.userId, toOrderItems(attempt), {
+        checkoutId: attempt.id,
+        cartId: attempt.cartId,
+        requestHash: attempt.requestHash,
+      });
     } catch (error) {
-      if (
-        error instanceof OrderCreationFailedError &&
-        error.outcome === 'DEFINITE'
-      ) {
+      if (error instanceof OrderCreationFailedError && error.outcome === 'DEFINITE') {
         return this.startCompensation(attempt, error.message);
       }
 
@@ -200,10 +150,7 @@ export class CheckoutCartUseCase {
       return pending(attempt.id);
     }
 
-    const confirmed = await this.attempts.markOrderConfirmed(
-      attempt.id,
-      order.orderId,
-    );
+    const confirmed = await this.attempts.markOrderConfirmed(attempt.id, order.orderId);
     return this.resume(confirmed);
   }
 
@@ -211,23 +158,16 @@ export class CheckoutCartUseCase {
     attempt: CheckoutAttemptEntity,
     failureMessage: string,
   ): Promise<CheckoutCartResult> {
-    const updatedAttempt = await this.attempts.markCompensating(
-      attempt.id,
-      failureMessage,
-    );
+    const updatedAttempt = await this.attempts.markCompensating(attempt.id, failureMessage);
 
-    if (
-      updatedAttempt.reconciliationAction === ReconciliationAction.ReleaseStock
-    ) {
+    if (updatedAttempt.reconciliationAction === ReconciliationAction.ReleaseStock) {
       return this.releaseStock(updatedAttempt, failureMessage);
     }
 
     return this.resume(updatedAttempt);
   }
 
-  private async commitStock(
-    attempt: CheckoutAttemptEntity,
-  ): Promise<CheckoutCartResult> {
+  private async commitStock(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
     if (attempt.orderId == null) {
       await this.attempts.markReconciliationRequired(
         attempt.id,
@@ -238,7 +178,7 @@ export class CheckoutCartUseCase {
     }
 
     try {
-      await this.inventory.commitStock(attempt.cartId, toStockItems(attempt));
+      await this.inventory.commitStock(toStockOperation(attempt));
     } catch (error) {
       await this.attempts.markReconciliationRequired(
         attempt.id,
@@ -252,9 +192,7 @@ export class CheckoutCartUseCase {
     return this.resume(committed);
   }
 
-  private async completeCart(
-    attempt: CheckoutAttemptEntity,
-  ): Promise<CheckoutCartResult> {
+  private async completeCart(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
     if (attempt.orderId == null) {
       await this.attempts.markReconciliationRequired(
         attempt.id,
@@ -288,19 +226,11 @@ export class CheckoutCartUseCase {
     failureMessage: string,
   ): Promise<CheckoutCartResult> {
     try {
-      await this.inventory.releaseStock(
-        attempt.cartId,
-        toStockItems(attempt),
-      );
+      await this.inventory.releaseStock(toStockOperation(attempt));
     } catch (error) {
-      this.checkoutFailureLogger.logInventoryReleaseFailure(
-        attempt.cartId,
-        error,
-      );
+      this.checkoutFailureLogger.logInventoryReleaseFailure(attempt.cartId, error);
       const releaseError =
-        error instanceof InventoryReleaseFailedError
-          ? error.message
-          : errorMessage(error);
+        error instanceof InventoryReleaseFailedError ? error.message : errorMessage(error);
       await this.attempts.markReconciliationRequired(
         attempt.id,
         ReconciliationAction.ReleaseStock,
@@ -313,13 +243,9 @@ export class CheckoutCartUseCase {
     throw new CheckoutTerminalError(failureMessage);
   }
 
-  private async completedResult(
-    attempt: CheckoutAttemptEntity,
-  ): Promise<CheckoutCartResult> {
+  private async completedResult(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
     if (attempt.orderId == null) {
-      throw new InvalidCartOperationError(
-        'Completed checkout is missing its order ID.',
-      );
+      throw new InvalidCartOperationError('Completed checkout is missing its order ID.');
     }
 
     const cart = await this.carts.findById(attempt.cartId);
@@ -340,9 +266,7 @@ export class CheckoutCartUseCase {
 
 function assertValidIdempotencyKey(idempotencyKey: string): void {
   if (!UUID_V4_PATTERN.test(idempotencyKey)) {
-    throw new InvalidCartOperationError(
-      'Idempotency-Key must be a valid UUID v4.',
-    );
+    throw new InvalidCartOperationError('Idempotency-Key must be a valid UUID v4.');
   }
 }
 
@@ -350,7 +274,18 @@ function toStockItems(attempt: CheckoutAttemptEntity): StockOperationItem[] {
   return attempt.itemsSnapshot.map((item) => ({
     productSkuId: BigInt(item.productSkuId),
     quantity: item.quantity,
+    flashSaleId: item.flashSaleId == null ? null : BigInt(item.flashSaleId),
+    flashSaleItemId: item.flashSaleItemId == null ? null : BigInt(item.flashSaleItemId),
   }));
+}
+
+function toStockOperation(attempt: CheckoutAttemptEntity) {
+  return {
+    cartId: attempt.cartId,
+    checkoutId: attempt.id,
+    userId: attempt.userId,
+    items: toStockItems(attempt),
+  };
 }
 
 function toOrderItems(attempt: CheckoutAttemptEntity): OrderCreateItem[] {

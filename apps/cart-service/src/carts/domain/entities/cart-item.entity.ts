@@ -5,6 +5,8 @@ export interface CartItemEntityProps {
   productName: string;
   imageUrl?: string | null;
   productSkuId: bigint;
+  flashSaleId?: bigint | null;
+  flashSaleItemId?: bigint | null;
   skuCode: string;
   price: number;
   quantity: number;
@@ -19,6 +21,8 @@ export class CartItemEntity {
   readonly productName: string;
   readonly imageUrl?: string | null;
   readonly productSkuId: bigint;
+  readonly flashSaleId: bigint | null;
+  readonly flashSaleItemId: bigint | null;
   readonly skuCode: string;
   readonly price: number;
   readonly quantity: number;
@@ -32,6 +36,8 @@ export class CartItemEntity {
     this.productName = props.productName;
     this.imageUrl = props.imageUrl;
     this.productSkuId = props.productSkuId;
+    this.flashSaleId = props.flashSaleId ?? null;
+    this.flashSaleItemId = props.flashSaleItemId ?? null;
     this.skuCode = props.skuCode;
     this.price = props.price;
     this.quantity = props.quantity;

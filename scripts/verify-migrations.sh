@@ -83,6 +83,8 @@ docker compose exec -T postgres-cart psql -U postgres -d verify_existing_cart \
   -v ON_ERROR_STOP=1 < apps/cart-service/prisma/migrations/20260917010000_add_checkout_attempt/migration.sql
 docker compose exec -T postgres-cart psql -U postgres -d verify_existing_cart \
   -v ON_ERROR_STOP=1 < apps/cart-service/prisma/migrations/20260920010000_commit_stock/migration.sql
+docker compose exec -T postgres-cart psql -U postgres -d verify_existing_cart \
+  -v ON_ERROR_STOP=1 < apps/cart-service/prisma/migrations/20260921010000_add_cart_item_sale_snapshot/migration.sql
 
 docker compose exec -T postgres-order psql -U postgres -d verify_existing_order \
   -v ON_ERROR_STOP=1 < apps/order-service/prisma/migrations/20260707000000_init/migration.sql
@@ -106,9 +108,11 @@ docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_in
   -v ON_ERROR_STOP=1 < apps/inventory-service/prisma/migrations/20260920010000_commit_stock/migration.sql
 
 cart_rows="$(docker compose exec -T postgres-cart psql -U postgres -d verify_existing_cart -Atq -c 'SELECT COUNT(*) FROM "carts";')"
+legacy_cart_items="$(docker compose exec -T postgres-cart psql -U postgres -d verify_existing_cart -Atq -c 'SELECT COUNT(*) FROM "cart_items" WHERE "flash_sale_id" IS NULL AND "flash_sale_item_id" IS NULL;')"
 order_rows="$(docker compose exec -T postgres-order psql -U postgres -d verify_existing_order -Atq -c 'SELECT COUNT(*) FROM "orders" WHERE "checkout_id" IS NULL;')"
 inventory_rows="$(docker compose exec -T postgres-inventory psql -U postgres -d verify_existing_inventory -Atq -c 'SELECT COUNT(*) FROM "stock_reservations" WHERE "status" = '\''RESERVED'\'';')"
 [[ "${cart_rows//[[:space:]]/}" == 1 ]]
+[[ "${legacy_cart_items//[[:space:]]/}" == 1 ]]
 [[ "${order_rows//[[:space:]]/}" == 1 ]]
 [[ "${inventory_rows//[[:space:]]/}" == 1 ]]
 

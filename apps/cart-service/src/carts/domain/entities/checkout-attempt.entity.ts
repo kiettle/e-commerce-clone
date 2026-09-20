@@ -8,6 +8,8 @@ export interface CheckoutItemSnapshot {
   imageUrl: string | null;
   price: string;
   quantity: number;
+  flashSaleId?: string | null;
+  flashSaleItemId?: string | null;
 }
 
 export interface CheckoutAttemptEntityProps {

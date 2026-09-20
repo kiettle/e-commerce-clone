@@ -5,11 +5,15 @@ import { ReleaseStockUseCase } from '../../application/use-cases/release-stock.u
 import { ReserveStockUseCase } from '../../application/use-cases/reserve-stock.use-case';
 import { InventoryOperationError } from '../../domain/errors/inventory-operation.error';
 
-interface StockOperationGrpcRequest {
-  cart_id: string;
+export interface StockOperationGrpcRequest {
+  cart_id?: string;
+  checkout_id?: string;
+  user_id?: string;
   items: Array<{
     product_sku_id: string;
     quantity: number;
+    flash_sale_id?: string;
+    flash_sale_item_id?: string;
   }>;
 }
 
@@ -29,30 +33,18 @@ export class InventoryGrpcController {
   ) {}
 
   @GrpcMethod('InventoryService', 'ReserveStock')
-  async reserveStock(
-    request: StockOperationGrpcRequest,
-  ): Promise<StockOperationGrpcResponse> {
-    return this.runStockOperation(() =>
-      this.reserveStockUseCase.execute(toCommand(request)),
-    );
+  async reserveStock(request: StockOperationGrpcRequest): Promise<StockOperationGrpcResponse> {
+    return this.runStockOperation(() => this.reserveStockUseCase.execute(toCommand(request)));
   }
 
   @GrpcMethod('InventoryService', 'ReleaseStock')
-  async releaseStock(
-    request: StockOperationGrpcRequest,
-  ): Promise<StockOperationGrpcResponse> {
-    return this.runStockOperation(() =>
-      this.releaseStockUseCase.execute(toCommand(request)),
-    );
+  async releaseStock(request: StockOperationGrpcRequest): Promise<StockOperationGrpcResponse> {
+    return this.runStockOperation(() => this.releaseStockUseCase.execute(toCommand(request)));
   }
 
   @GrpcMethod('InventoryService', 'CommitStock')
-  async commitStock(
-    request: StockOperationGrpcRequest,
-  ): Promise<StockOperationGrpcResponse> {
-    return this.runStockOperation(() =>
-      this.commitStockUseCase.execute(toCommand(request)),
-    );
+  async commitStock(request: StockOperationGrpcRequest): Promise<StockOperationGrpcResponse> {
+    return this.runStockOperation(() => this.commitStockUseCase.execute(toCommand(request)));
   }
 
   private async runStockOperation(
@@ -79,12 +71,31 @@ export class InventoryGrpcController {
   }
 }
 
-function toCommand(request: StockOperationGrpcRequest) {
+export function toCommand(request: StockOperationGrpcRequest) {
   return {
-    cartId: BigInt(request.cart_id),
+    cartId: requiredBigInt(request.cart_id),
+    checkoutId: request.checkout_id ?? '',
+    userId: requiredBigInt(request.user_id),
     items: request.items.map((item) => ({
-      productSkuId: BigInt(item.product_sku_id),
+      productSkuId: requiredBigInt(item.product_sku_id),
       quantity: item.quantity,
+      flashSaleId: optionalBigInt(item.flash_sale_id),
+      flashSaleItemId: optionalBigInt(item.flash_sale_item_id),
     })),
   };
+}
+
+function optionalBigInt(value: string | undefined): bigint | null {
+  if (value == null) {
+    return null;
+  }
+  return requiredBigInt(value);
+}
+
+function requiredBigInt(value: string | undefined): bigint {
+  try {
+    return BigInt(value ?? 0);
+  } catch {
+    return 0n;
+  }
 }

@@ -4,6 +4,12 @@ import { InventoryRepositoryPort } from '../../domain/repositories/inventory.rep
 import { CommitStockUseCase } from './commit-stock.use-case';
 
 describe('CommitStockUseCase', () => {
+  const operationIdentity = {
+    cartId: 55n,
+    checkoutId: '550e8400-e29b-41d4-a716-446655440000',
+    userId: 10n,
+  };
+
   let inventory: Mocked<InventoryRepositoryPort>;
   let useCase: CommitStockUseCase;
 
@@ -18,15 +24,15 @@ describe('CommitStockUseCase', () => {
   });
 
   it('rejects an empty operation', async () => {
-    await expect(
-      useCase.execute({ cartId: 55n, items: [] }),
-    ).rejects.toBeInstanceOf(InvalidStockOperationError);
+    await expect(useCase.execute({ ...operationIdentity, items: [] })).rejects.toBeInstanceOf(
+      InvalidStockOperationError,
+    );
     expect(inventory.commitStock).not.toHaveBeenCalled();
   });
 
   it('normalizes duplicate SKUs before committing', async () => {
     await useCase.execute({
-      cartId: 55n,
+      ...operationIdentity,
       items: [
         { productSkuId: 101n, quantity: 2 },
         { productSkuId: 102n, quantity: 1 },
@@ -35,21 +41,28 @@ describe('CommitStockUseCase', () => {
     });
 
     expect(inventory.commitStock).toHaveBeenCalledWith(55n, [
-      { productSkuId: 101n, quantity: 5 },
-      { productSkuId: 102n, quantity: 1 },
+      {
+        productSkuId: 101n,
+        quantity: 5,
+        flashSaleId: null,
+        flashSaleItemId: null,
+      },
+      {
+        productSkuId: 102n,
+        quantity: 1,
+        flashSaleId: null,
+        flashSaleItemId: null,
+      },
     ]);
   });
 
-  it.each([0, -1])(
-    'rejects a non-positive quantity of %s',
-    async (quantity) => {
-      await expect(
-        useCase.execute({
-          cartId: 55n,
-          items: [{ productSkuId: 101n, quantity }],
-        }),
-      ).rejects.toBeInstanceOf(InvalidStockOperationError);
-      expect(inventory.commitStock).not.toHaveBeenCalled();
-    },
-  );
+  it.each([0, -1])('rejects a non-positive quantity of %s', async (quantity) => {
+    await expect(
+      useCase.execute({
+        ...operationIdentity,
+        items: [{ productSkuId: 101n, quantity }],
+      }),
+    ).rejects.toBeInstanceOf(InvalidStockOperationError);
+    expect(inventory.commitStock).not.toHaveBeenCalled();
+  });
 });

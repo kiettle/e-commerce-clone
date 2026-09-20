@@ -8,6 +8,8 @@ export interface StoredProductSkuSnapshot {
   skuCode: string;
   regularPrice: number;
   activeSalePrice: number | null;
+  flashSaleId: bigint | null;
+  flashSaleItemId: bigint | null;
 }
 
 export interface ProductSkuSnapshotRepositoryPort {

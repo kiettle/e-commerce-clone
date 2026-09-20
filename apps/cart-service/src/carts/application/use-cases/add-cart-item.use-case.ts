@@ -14,15 +14,10 @@ export class AddCartItemUseCase {
 
   async execute(command: AddCartItemCommand): Promise<CartEntity> {
     assertPositiveId(command.userId, 'Cart userId must be greater than zero.');
-    assertPositiveId(
-      command.productSkuId,
-      'Cart item productSkuId must be greater than zero.',
-    );
+    assertPositiveId(command.productSkuId, 'Cart item productSkuId must be greater than zero.');
     assertPositiveQuantity(command.quantity);
 
-    const productSnapshot = await this.productCatalog.getProductSkuSnapshot(
-      command.productSkuId,
-    );
+    const productSnapshot = await this.productCatalog.getProductSkuSnapshot(command.productSkuId);
 
     if (!productSnapshot) {
       throw new ProductSnapshotNotFoundError(command.productSkuId);
@@ -37,6 +32,8 @@ export class AddCartItemUseCase {
         productName: productSnapshot.productName,
         imageUrl: productSnapshot.imageUrl,
         productSkuId: productSnapshot.productSkuId,
+        flashSaleId: productSnapshot.flashSaleId,
+        flashSaleItemId: productSnapshot.flashSaleItemId,
         skuCode: productSnapshot.skuCode,
         price: productSnapshot.price,
       },
@@ -47,8 +44,6 @@ export class AddCartItemUseCase {
 
 export function assertPositiveQuantity(quantity: number): void {
   if (!Number.isInteger(quantity) || quantity <= 0) {
-    throw new InvalidCartOperationError(
-      'Cart item quantity must be greater than zero.',
-    );
+    throw new InvalidCartOperationError('Cart item quantity must be greater than zero.');
   }
 }

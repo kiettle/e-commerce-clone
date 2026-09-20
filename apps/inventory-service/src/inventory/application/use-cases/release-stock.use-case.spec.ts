@@ -4,6 +4,12 @@ import { InventoryRepositoryPort } from '../../domain/repositories/inventory.rep
 import { ReleaseStockUseCase } from './release-stock.use-case';
 
 describe('ReleaseStockUseCase', () => {
+  const operationIdentity = {
+    cartId: 55n,
+    checkoutId: '550e8400-e29b-41d4-a716-446655440000',
+    userId: 10n,
+  };
+
   let inventory: Mocked<InventoryRepositoryPort>;
   let useCase: ReleaseStockUseCase;
 
@@ -18,7 +24,7 @@ describe('ReleaseStockUseCase', () => {
   });
 
   it('rejects an empty release without calling the repository', async () => {
-    await expect(useCase.execute({ cartId: 55n, items: [] })).rejects.toBeInstanceOf(
+    await expect(useCase.execute({ ...operationIdentity, items: [] })).rejects.toBeInstanceOf(
       InvalidStockOperationError,
     );
     expect(inventory.releaseStock).not.toHaveBeenCalled();
@@ -26,7 +32,7 @@ describe('ReleaseStockUseCase', () => {
 
   it('normalizes duplicate SKUs before calling the repository', async () => {
     await useCase.execute({
-      cartId: 55n,
+      ...operationIdentity,
       items: [
         { productSkuId: 101n, quantity: 2 },
         { productSkuId: 102n, quantity: 1 },
@@ -36,8 +42,18 @@ describe('ReleaseStockUseCase', () => {
 
     expect(inventory.releaseStock).toHaveBeenCalledTimes(1);
     expect(inventory.releaseStock).toHaveBeenCalledWith(55n, [
-      { productSkuId: 101n, quantity: 5 },
-      { productSkuId: 102n, quantity: 1 },
+      {
+        productSkuId: 101n,
+        quantity: 5,
+        flashSaleId: null,
+        flashSaleItemId: null,
+      },
+      {
+        productSkuId: 102n,
+        quantity: 1,
+        flashSaleId: null,
+        flashSaleItemId: null,
+      },
     ]);
   });
 
@@ -46,7 +62,7 @@ describe('ReleaseStockUseCase', () => {
     async (quantity) => {
       await expect(
         useCase.execute({
-          cartId: 55n,
+          ...operationIdentity,
           items: [{ productSkuId: 101n, quantity }],
         }),
       ).rejects.toBeInstanceOf(InvalidStockOperationError);
