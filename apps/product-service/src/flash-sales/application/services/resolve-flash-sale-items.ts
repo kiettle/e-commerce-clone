@@ -32,7 +32,8 @@ export async function resolveFlashSaleItems(
       productSkuId: item.productSkuId,
       originalPrice: sku.price,
       salePrice: item.salePrice,
-      quantity: item.quantity,
+      stockLimit: item.stockLimit,
+      maxQuantityPerUser: item.maxQuantityPerUser,
     });
   });
 }
@@ -40,6 +41,9 @@ export async function resolveFlashSaleItems(
 function rejectDuplicateSkuIds(productSkuIds: bigint[]): void {
   const uniqueIds = new Set(productSkuIds.map(String));
   if (uniqueIds.size !== productSkuIds.length) {
-    throw new InvalidFlashSaleError('A product SKU can appear only once in a flash sale.');
+    throw new InvalidFlashSaleError(
+      'A product SKU can appear only once in a flash sale.',
+      'FLASH_SALE_SKU_DUPLICATE',
+    );
   }
 }

@@ -20,9 +20,8 @@ interface FlashSaleEventObject {
     items?: Array<{
       flashSaleItemId?: string;
       productSkuId?: string;
-      originalPrice?: string;
-      salePrice?: string;
-      quantityLimit?: number;
+      stockLimit?: number;
+      maxQuantityPerUser?: number;
     }>;
   };
 }
@@ -66,9 +65,8 @@ export class ProtobufFlashSaleEventDeserializer {
         items: (decoded.flashSaleScheduled.items ?? []).map((item) => ({
           flashSaleItemId: BigInt(item.flashSaleItemId ?? '0'),
           productSkuId: BigInt(item.productSkuId ?? '0'),
-          originalPrice: item.originalPrice ?? '',
-          salePrice: item.salePrice ?? '',
-          quantityLimit: item.quantityLimit ?? 0,
+          stockLimit: item.stockLimit ?? 0,
+          maxQuantityPerUser: item.maxQuantityPerUser ?? 0,
         })),
       },
     };

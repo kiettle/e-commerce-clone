@@ -16,7 +16,7 @@ interface ProductSkuSnapshotResponse {
   flashSaleId: string | null;
   flashSaleItemId: string | null;
   saleEndsAt: string | null;
-  maxPerUserQuantity: number | null;
+  maxQuantityPerUser: number | null;
 }
 
 @Controller('internal/product-skus')
@@ -32,12 +32,18 @@ export class InternalProductSkusController {
     }
 
     return {
-      ...snapshot,
       productId: snapshot.productId.toString(),
+      productName: snapshot.productName,
+      imageUrl: snapshot.imageUrl,
       productSkuId: snapshot.productSkuId.toString(),
+      skuCode: snapshot.skuCode,
+      regularPrice: snapshot.regularPrice,
+      effectivePrice: snapshot.effectivePrice,
+      priceSource: snapshot.priceSource,
       flashSaleId: snapshot.flashSaleId?.toString() ?? null,
       flashSaleItemId: snapshot.flashSaleItemId?.toString() ?? null,
       saleEndsAt: snapshot.saleEndsAt?.toISOString() ?? null,
+      maxQuantityPerUser: snapshot.maxPerUserQuantity,
     };
   }
 }

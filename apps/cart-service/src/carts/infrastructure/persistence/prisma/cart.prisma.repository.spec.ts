@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FlashSaleQuantityExceededError } from '../../../domain/errors/flash-sale-quantity-exceeded.error';
 import { InvalidCartOperationError } from '../../../domain/errors/invalid-cart-operation.error';
 import { CartItemPriceSource } from '../../../domain/enums/cart-item-price-source.enum';
 import { CartItemPricingChangedError } from '../../../domain/errors/cart-item-pricing-changed.error';
@@ -160,10 +161,10 @@ describe('PrismaCartRepository checkout freezing', () => {
         },
         1,
       ),
-    ).rejects.toBeInstanceOf(InvalidCartOperationError);
+    ).rejects.toBeInstanceOf(FlashSaleQuantityExceededError);
 
     await expect(repository.updateItemQuantity(10n, 30n, 2)).rejects.toBeInstanceOf(
-      InvalidCartOperationError,
+      FlashSaleQuantityExceededError,
     );
     expect(transaction.cartItem.update).not.toHaveBeenCalled();
   });

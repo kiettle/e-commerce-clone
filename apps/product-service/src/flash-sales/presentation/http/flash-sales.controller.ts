@@ -3,8 +3,8 @@ import {
   Body,
   ConflictException,
   Controller,
-  Delete,
   Get,
+  Headers,
   NotFoundException,
   Param,
   ParseIntPipe,
@@ -60,9 +60,13 @@ export class FlashSalesController {
   }
 
   @Post()
-  async create(@Body() body: CreateFlashSaleRequestDto): Promise<FlashSaleResponse> {
+  async create(
+    @Headers('x-user-id') userIdHeader: string | undefined,
+    @Body() body: CreateFlashSaleRequestDto,
+  ): Promise<FlashSaleResponse> {
     try {
       const flashSale = await this.createFlashSale.execute({
+        createdBy: parsePositiveId(userIdHeader, 'Administrator user ID'),
         name: body.name,
         description: body.description,
         startsAt: new Date(body.startsAt),
@@ -70,7 +74,8 @@ export class FlashSalesController {
         items: body.items.map((item) => ({
           productSkuId: BigInt(item.productSkuId),
           salePrice: item.salePrice,
-          quantity: item.quantity,
+          stockLimit: item.stockLimit,
+          maxQuantityPerUser: item.maxQuantityPerUser,
         })),
       });
       return toFlashSaleResponse(flashSale);
@@ -94,7 +99,8 @@ export class FlashSalesController {
         items: body.items.map((item) => ({
           productSkuId: BigInt(item.productSkuId),
           salePrice: item.salePrice,
-          quantity: item.quantity,
+          stockLimit: item.stockLimit,
+          maxQuantityPerUser: item.maxQuantityPerUser,
         })),
       });
       return toFlashSaleResponse(flashSale);
@@ -103,7 +109,7 @@ export class FlashSalesController {
     }
   }
 
-  @Delete(':flashSaleId')
+  @Post(':flashSaleId/cancel')
   async cancel(
     @Param('flashSaleId', ParseIntPipe) flashSaleId: number,
   ): Promise<FlashSaleResponse> {
@@ -121,6 +127,12 @@ export class FlashSalesController {
     try {
       return toFlashSaleResponse(await this.scheduleFlashSale.execute(BigInt(flashSaleId)));
     } catch (error) {
+      if (error instanceof FlashSaleNotDraftError) {
+        throw new ConflictException({
+          code: 'FLASH_SALE_NOT_SCHEDULABLE',
+          message: error.message,
+        });
+      }
       throw mapFlashSaleError(error);
     }
   }
@@ -128,18 +140,37 @@ export class FlashSalesController {
   @Get(':flashSaleId')
   async get(
     @Param('flashSaleId', ParseIntPipe) flashSaleId: number,
+    @Headers('x-user-role') userRole: string | undefined,
   ): Promise<PublicFlashSaleResponse> {
     try {
-      return toPublicFlashSaleResponse(await this.getFlashSale.execute(BigInt(flashSaleId)));
+      const flashSale = await this.getFlashSale.execute(BigInt(flashSaleId));
+      if (
+        userRole !== 'ADMIN' &&
+        (flashSale.status === FlashSaleStatus.Draft ||
+          flashSale.status === FlashSaleStatus.Cancelled)
+      ) {
+        throw new FlashSaleNotFoundError(BigInt(flashSaleId));
+      }
+      return toPublicFlashSaleResponse(flashSale);
     } catch (error) {
       throw mapFlashSaleError(error);
     }
   }
 }
 
+function parsePositiveId(value: string | undefined, field: string): bigint {
+  if (!value || !/^\d+$/.test(value) || BigInt(value) <= 0n) {
+    throw new BadRequestException(`${field} must be a positive integer.`);
+  }
+  return BigInt(value);
+}
+
 function mapFlashSaleError(error: unknown): Error {
   if (error instanceof FlashSaleNotFoundError || error instanceof FlashSaleSkuNotFoundError) {
-    return new NotFoundException(error.message);
+    return new NotFoundException({
+      code: error instanceof FlashSaleNotFoundError ? error.code : 'FLASH_SALE_NOT_FOUND',
+      message: error.message,
+    });
   }
   if (
     error instanceof FlashSaleNotDraftError ||
@@ -148,10 +179,19 @@ function mapFlashSaleError(error: unknown): Error {
     error instanceof FlashSaleProductInactiveError ||
     error instanceof FlashSaleSkuInactiveError
   ) {
-    return new ConflictException(error.message);
+    return new ConflictException({
+      code: 'code' in error ? error.code : 'FLASH_SALE_NOT_SCHEDULABLE',
+      message: error.message,
+    });
   }
-  if (error instanceof InvalidFlashSaleError || error instanceof FlashSaleScheduleTimeError) {
-    return new BadRequestException(error.message);
+  if (error instanceof FlashSaleScheduleTimeError) {
+    return new BadRequestException({ code: error.code, message: error.message });
+  }
+  if (error instanceof InvalidFlashSaleError) {
+    const response = { code: error.code, message: error.message };
+    return error.code === 'FLASH_SALE_NOT_SCHEDULABLE'
+      ? new ConflictException(response)
+      : new BadRequestException(response);
   }
   return error instanceof Error ? error : new Error('Unknown flash sale error.');
 }

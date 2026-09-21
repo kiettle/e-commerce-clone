@@ -1,6 +1,7 @@
 import { CartEntity } from '../../domain/entities/cart.entity';
 import { CartItemPriceSource } from '../../domain/enums/cart-item-price-source.enum';
 import { InvalidCartOperationError } from '../../domain/errors/invalid-cart-operation.error';
+import { FlashSaleQuantityExceededError } from '../../domain/errors/flash-sale-quantity-exceeded.error';
 import { ProductSnapshotNotFoundError } from '../../domain/errors/product-snapshot-not-found.error';
 import { CartRepositoryPort } from '../../domain/repositories/cart.repository.port';
 import { AddCartItemCommand } from '../dto/add-cart-item.command';
@@ -28,7 +29,7 @@ export class AddCartItemUseCase {
       productSnapshot.priceSource === CartItemPriceSource.FlashSale &&
       command.quantity > (productSnapshot.maxPerUserQuantity ?? 1)
     ) {
-      throw new InvalidCartOperationError('Flash-sale items are limited to one per customer.');
+      throw new FlashSaleQuantityExceededError();
     }
 
     const cart = await this.carts.getOrCreateActiveCart(command.userId);

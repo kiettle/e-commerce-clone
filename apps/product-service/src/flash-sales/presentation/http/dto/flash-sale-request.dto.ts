@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsDefined,
+  Equals,
   IsInt,
   IsISO8601,
   IsNumber,
@@ -25,7 +26,10 @@ export class FlashSaleItemRequestDto {
 
   @IsInt()
   @Min(1)
-  quantity!: number;
+  stockLimit!: number;
+
+  @Equals(1)
+  maxQuantityPerUser!: number;
 }
 
 export class CreateFlashSaleRequestDto {

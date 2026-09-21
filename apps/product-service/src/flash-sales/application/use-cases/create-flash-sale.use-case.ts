@@ -13,6 +13,7 @@ export class CreateFlashSaleUseCase {
       description: command.description,
       startsAt: command.startsAt,
       endsAt: command.endsAt,
+      createdBy: command.createdBy,
       items,
     });
 

@@ -82,7 +82,7 @@ describe('flash-sale draft use cases', () => {
       description: null,
       startsAt,
       endsAt,
-      items: [{ productSkuId: 11n, salePrice: 120, quantity: 4 }],
+      items: [{ productSkuId: 11n, salePrice: 120, stockLimit: 4 }],
     });
 
     const replacement = flashSales.replaceDraft.mock.calls[0][0];
@@ -93,7 +93,7 @@ describe('flash-sale draft use cases', () => {
       productSkuId: 11n,
       originalPrice: 159.9,
       salePrice: 120,
-      quantity: 4,
+      stockLimit: 4,
     });
   });
 
@@ -143,8 +143,8 @@ function command() {
     startsAt,
     endsAt,
     items: [
-      { productSkuId: 10n, salePrice: 79.9, quantity: 5 },
-      { productSkuId: 11n, salePrice: 119.9, quantity: 3 },
+      { productSkuId: 10n, salePrice: 79.9, stockLimit: 5 },
+      { productSkuId: 11n, salePrice: 119.9, stockLimit: 3 },
     ],
   };
 }
@@ -164,7 +164,7 @@ function draftSale(status = FlashSaleStatus.Draft): FlashSaleEntity {
         productSkuId: 10n,
         originalPrice: 99.9,
         salePrice: 79.9,
-        quantity: 5,
+        stockLimit: 5,
       }),
     ],
   });

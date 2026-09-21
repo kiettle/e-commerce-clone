@@ -118,9 +118,8 @@ describe('KafkaProductEventPublisher', () => {
           {
             flashSaleItemId: '501',
             productSkuId: '1001',
-            originalPrice: '100.00',
-            salePrice: '75.00',
-            quantity: 25,
+            stockLimit: 25,
+            maxQuantityPerUser: 1,
           },
         ],
       },

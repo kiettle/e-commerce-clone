@@ -18,7 +18,7 @@ export interface CartItemResponse {
   flashSaleId: number | null;
   flashSaleItemId: number | null;
   saleEndsAt: string | null;
-  maxPerUserQuantity: number | null;
+  maxQuantityPerUser: number | null;
   quantity: number;
   subtotal: number;
 }
@@ -98,7 +98,7 @@ function toCartItemResponse(item: CartItemEntity): CartItemResponse {
     flashSaleId: item.flashSaleId == null ? null : Number(item.flashSaleId),
     flashSaleItemId: item.flashSaleItemId == null ? null : Number(item.flashSaleItemId),
     saleEndsAt: item.saleEndsAt?.toISOString() ?? null,
-    maxPerUserQuantity: item.maxPerUserQuantity,
+    maxQuantityPerUser: item.maxPerUserQuantity,
     quantity: item.quantity,
     subtotal: item.subtotal,
   };

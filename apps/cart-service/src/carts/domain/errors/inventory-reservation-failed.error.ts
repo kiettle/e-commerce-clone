@@ -6,6 +6,7 @@ const inventoryReservationFailureCodes = [
   'FLASH_SALE_ENDED',
   'FLASH_SALE_SOLD_OUT',
   'FLASH_SALE_LIMIT_REACHED',
+  'FLASH_SALE_QUANTITY_EXCEEDED',
 ] as const;
 
 export type InventoryReservationFailureCode =

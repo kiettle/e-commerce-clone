@@ -44,14 +44,11 @@ function validate(command: HandleFlashSaleScheduledCommand): void {
     if (item.flashSaleItemId <= 0n || item.productSkuId <= 0n) {
       throw new InvalidStockOperationError('Flash sale item and SKU ids must be positive.');
     }
-    if (!Number.isInteger(item.quantityLimit) || item.quantityLimit <= 0) {
+    if (!Number.isInteger(item.stockLimit) || item.stockLimit <= 0) {
       throw new InvalidStockOperationError('Flash sale quantity limits must be positive integers.');
     }
-    if (!validPrice(item.originalPrice) || !validPrice(item.salePrice)) {
-      throw new InvalidStockOperationError('Flash sale prices must be positive with two decimals.');
-    }
-    if (Number(item.salePrice) >= Number(item.originalPrice)) {
-      throw new InvalidStockOperationError('Flash sale price must be below the original price.');
+    if (item.maxQuantityPerUser !== 1) {
+      throw new InvalidStockOperationError('Flash sale maximum quantity per user must be 1.');
     }
 
     const itemId = item.flashSaleItemId.toString();
@@ -69,8 +66,4 @@ function validate(command: HandleFlashSaleScheduledCommand): void {
 
 function validDate(value: Date): boolean {
   return value instanceof Date && !Number.isNaN(value.getTime());
-}
-
-function validPrice(value: string): boolean {
-  return /^\d+\.\d{2}$/.test(value) && Number(value) > 0;
 }

@@ -1,13 +1,13 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   ParseIntPipe,
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -27,6 +27,7 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
+import { AuthenticatedRequest } from '../../../common/types/authenticated-user';
 import { CatalogGatewayClient } from '../../infrastructure/http/catalog-gateway.client';
 import {
   CreateFlashSaleRequestDto,
@@ -59,8 +60,11 @@ export class FlashSalesGatewayController {
   @ApiNotFoundResponse({ description: 'A referenced product SKU was not found.' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid token.' })
   @ApiForbiddenResponse({ description: 'Administrator role required.' })
-  create(@Body() body: CreateFlashSaleRequestDto): Promise<FlashSaleResponseDto> {
-    return this.catalogClient.createFlashSale(body);
+  create(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: CreateFlashSaleRequestDto,
+  ): Promise<FlashSaleResponseDto> {
+    return this.catalogClient.createFlashSale(body, request.user!.userId);
   }
 
   @Put(':flashSaleId')
@@ -80,7 +84,7 @@ export class FlashSalesGatewayController {
     return this.catalogClient.updateFlashSale(flashSaleId, body);
   }
 
-  @Delete(':flashSaleId')
+  @Post(':flashSaleId/cancel')
   @Roles(UserRole.Admin)
   @ApiOperation({ summary: 'Cancel a flash-sale draft' })
   @ApiParam({ name: 'flashSaleId', example: 1, type: Number })
@@ -111,14 +115,15 @@ export class FlashSalesGatewayController {
   }
 
   @Get(':flashSaleId')
-  @ApiOperation({ summary: 'Get a flash sale, including cancelled sales' })
+  @ApiOperation({ summary: 'Get a public flash sale or an administrator-owned draft' })
   @ApiParam({ name: 'flashSaleId', example: 1, type: Number })
   @ApiOkResponse({ type: PublicFlashSaleResponseDto })
   @ApiNotFoundResponse({ description: 'Flash sale not found.' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid token.' })
   get(
     @Param('flashSaleId', ParseIntPipe) flashSaleId: number,
+    @Req() request: AuthenticatedRequest,
   ): Promise<PublicFlashSaleResponseDto> {
-    return this.catalogClient.getFlashSale(flashSaleId);
+    return this.catalogClient.getFlashSale(flashSaleId, request.user!.role);
   }
 }

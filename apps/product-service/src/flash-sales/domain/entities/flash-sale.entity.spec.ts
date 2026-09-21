@@ -73,14 +73,25 @@ describe('FlashSaleEntity', () => {
     expect(() => createItem(1n, { salePrice: 101 })).toThrow(InvalidFlashSaleError);
   });
 
-  it('rejects a non-positive quantity', () => {
-    expect(() => createItem(1n, { quantity: 0 })).toThrow(InvalidFlashSaleError);
+  it('rejects a non-positive stockLimit', () => {
+    expect(() => createItem(1n, { stockLimit: 0 })).toThrow(InvalidFlashSaleError);
+  });
+
+  it('requires the V1 one-unit per-user limit', () => {
+    expect(() => createItem(1n, { maxQuantityPerUser: 2 })).toThrow(InvalidFlashSaleError);
   });
 
   it('rejects scheduling an empty sale', () => {
     const flashSale = createFlashSale({ items: [] });
 
     expect(() => flashSale.schedule()).toThrow(InvalidFlashSaleError);
+  });
+
+  it('rejects scheduling more than 100 items', () => {
+    const items = Array.from({ length: 101 }, (_, index) => createItem(BigInt(index + 1)));
+    const flashSale = createFlashSale({ items });
+
+    expect(() => flashSale.schedule()).toThrow('cannot contain more than 100 items');
   });
 
   it('does not allow a scheduled sale to change', () => {
@@ -123,7 +134,7 @@ function createItem(
     productSkuId,
     originalPrice: 100,
     salePrice: 80,
-    quantity: 10,
+    stockLimit: 10,
     ...overrides,
   });
 }

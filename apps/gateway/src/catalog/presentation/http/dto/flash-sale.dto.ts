@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsDefined,
+  Equals,
   IsInt,
   IsISO8601,
   IsNumber,
@@ -49,7 +50,11 @@ export class FlashSaleItemRequestDto {
   @ApiProperty({ example: 20 })
   @IsInt()
   @Min(1)
-  quantity!: number;
+  stockLimit!: number;
+
+  @ApiProperty({ example: 1, description: 'V1 allows one unit per user.' })
+  @Equals(1)
+  maxQuantityPerUser!: number;
 }
 
 export class CreateFlashSaleRequestDto {
@@ -121,7 +126,10 @@ export class FlashSaleItemResponseDto {
   salePrice!: number;
 
   @ApiProperty({ example: 20 })
-  quantity!: number;
+  stockLimit!: number;
+
+  @ApiProperty({ example: 1 })
+  maxQuantityPerUser!: number;
 }
 
 export class FlashSaleResponseDto {
@@ -160,11 +168,23 @@ export class PublicFlashSaleItemResponseDto {
   @ApiProperty({ example: 101 })
   productSkuId!: number;
 
+  @ApiProperty({ example: 'Wireless Keyboard' })
+  productName!: string;
+
+  @ApiPropertyOptional({ example: 'https://example.test/keyboard.jpg', nullable: true })
+  imageUrl!: string | null;
+
   @ApiProperty({ example: 99.9 })
   originalPrice!: number;
 
   @ApiProperty({ example: 79.9 })
   salePrice!: number;
+
+  @ApiProperty({ enum: ['AVAILABLE', 'SOLD_OUT', 'UNKNOWN'], example: 'UNKNOWN' })
+  availability!: 'AVAILABLE' | 'SOLD_OUT' | 'UNKNOWN';
+
+  @ApiProperty({ example: 1 })
+  maxQuantityPerUser!: number;
 }
 
 export class PublicFlashSaleResponseDto {

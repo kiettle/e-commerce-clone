@@ -3,9 +3,8 @@ export const FLASH_SALE_STOCK_REPOSITORY = Symbol('FLASH_SALE_STOCK_REPOSITORY')
 export interface FlashSaleStockItem {
   flashSaleItemId: bigint;
   productSkuId: bigint;
-  originalPrice: string;
-  salePrice: string;
-  quantityLimit: number;
+  stockLimit: number;
+  maxQuantityPerUser: number;
 }
 
 export interface FlashSaleScheduledStockEvent {

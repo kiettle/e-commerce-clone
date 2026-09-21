@@ -16,6 +16,7 @@ enum StockReservationStatus {
   RESERVED
   COMMITTED
   RELEASED
+  EXPIRED
 }
 
 enum StockTransactionType {
@@ -56,6 +57,7 @@ model StockReservation {
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
   releasedAt      DateTime?              @map("released_at")
+  expiresAt       DateTime?              @map("expires_at")
   stock           InventoryStock         @relation(fields: [productSkuId], references: [productSkuId])
   flashSaleStock  FlashSaleStock?        @relation(fields: [flashSaleItemId], references: [flashSaleItemId])
 
@@ -93,21 +95,21 @@ model ProcessedProductEvent {
 }
 
 model FlashSaleStock {
-  id               BigInt             @id @default(autoincrement())
-  flashSaleId      BigInt             @map("flash_sale_id")
-  flashSaleItemId  BigInt             @unique @map("flash_sale_item_id")
-  productSkuId     BigInt             @map("product_sku_id")
-  originalPrice    Decimal            @map("original_price") @db.Decimal(10, 2)
-  salePrice        Decimal            @map("sale_price") @db.Decimal(10, 2)
-  quantityLimit    Int                @map("quantity_limit")
-  userLimit        Int                @default(1) @map("user_limit")
-  reservedQuantity Int                @default(0) @map("reserved_quantity")
-  soldQuantity     Int                @default(0) @map("sold_quantity")
-  startsAt         DateTime           @map("starts_at")
-  endsAt           DateTime           @map("ends_at")
-  createdAt        DateTime           @default(now()) @map("created_at")
-  updatedAt        DateTime           @updatedAt @map("updated_at")
-  reservations     StockReservation[]
+  id                 BigInt             @id @default(autoincrement())
+  flashSaleId        BigInt             @map("flash_sale_id")
+  flashSaleItemId    BigInt             @unique @map("flash_sale_item_id")
+  productSkuId       BigInt             @map("product_sku_id")
+  originalPrice      Decimal?           @map("original_price") @db.Decimal(10, 2)
+  salePrice          Decimal?           @map("sale_price") @db.Decimal(10, 2)
+  stockLimit         Int                @map("quantity_limit")
+  maxQuantityPerUser Int                @default(1) @map("user_limit")
+  reservedQuantity   Int                @default(0) @map("reserved_quantity")
+  soldQuantity       Int                @default(0) @map("sold_quantity")
+  startsAt           DateTime           @map("starts_at")
+  endsAt             DateTime           @map("ends_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  reservations       StockReservation[]
 
   @@unique([flashSaleId, productSkuId])
   @@index([flashSaleId])

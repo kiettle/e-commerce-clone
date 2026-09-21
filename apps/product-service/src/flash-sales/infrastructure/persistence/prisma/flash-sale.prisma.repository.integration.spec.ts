@@ -86,7 +86,7 @@ describeWithDatabase('PrismaFlashSaleRepository', () => {
     await expect(
       useCase.execute({
         ...createCommand(),
-        items: [{ productSkuId: 999999n, salePrice: 10, quantity: 1 }],
+        items: [{ productSkuId: 999999n, salePrice: 10, stockLimit: 1 }],
       }),
     ).rejects.toBeInstanceOf(FlashSaleSkuNotFoundError);
     await expect(prisma.flashSale.count()).resolves.toBe(0);
@@ -108,7 +108,7 @@ describeWithDatabase('PrismaFlashSaleRepository', () => {
       description: null,
       startsAt: new Date('2026-09-26T10:00:00.000Z'),
       endsAt: new Date('2026-09-26T13:00:00.000Z'),
-      items: [{ productSkuId: secondSkuId, salePrice: 90, quantity: 2 }],
+      items: [{ productSkuId: secondSkuId, salePrice: 90, stockLimit: 2 }],
     });
 
     expect(updated.name).toBe('Replacement sale');
@@ -175,7 +175,7 @@ describeWithDatabase('PrismaFlashSaleRepository', () => {
             productSkuId: firstSkuId,
             originalPrice: 100,
             salePrice: 80,
-            quantity: 5,
+            stockLimit: 5,
           },
         },
       },
@@ -218,7 +218,7 @@ describeWithDatabase('PrismaFlashSaleRepository', () => {
               productSkuId: firstSkuId,
               originalPrice: 100,
               salePrice,
-              quantity: 5,
+              stockLimit: 5,
             },
           },
         },
@@ -406,8 +406,8 @@ describeWithDatabase('PrismaFlashSaleRepository', () => {
       startsAt: new Date('2026-09-25T10:00:00.000Z'),
       endsAt: new Date('2026-09-25T12:00:00.000Z'),
       items: [
-        { productSkuId: firstSkuId, salePrice: 80, quantity: 5 },
-        { productSkuId: secondSkuId, salePrice: 90, quantity: 3 },
+        { productSkuId: firstSkuId, salePrice: 80, stockLimit: 5 },
+        { productSkuId: secondSkuId, salePrice: 90, stockLimit: 3 },
       ],
     };
   }
@@ -425,7 +425,7 @@ describeWithDatabase('PrismaFlashSaleRepository', () => {
       items: options.skuIds.map((productSkuId) => ({
         productSkuId,
         salePrice: prices.get(productSkuId)!,
-        quantity: 5,
+        stockLimit: 5,
       })),
     });
   }

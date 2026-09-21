@@ -5,7 +5,8 @@ export type FlashSaleReservationErrorCode =
   | 'FLASH_SALE_NOT_ACTIVE'
   | 'FLASH_SALE_ENDED'
   | 'FLASH_SALE_SOLD_OUT'
-  | 'FLASH_SALE_LIMIT_REACHED';
+  | 'FLASH_SALE_LIMIT_REACHED'
+  | 'FLASH_SALE_QUANTITY_EXCEEDED';
 
 const messages: Record<FlashSaleReservationErrorCode, string> = {
   FLASH_SALE_NOT_READY: 'Flash-sale inventory is not ready.',
@@ -13,6 +14,7 @@ const messages: Record<FlashSaleReservationErrorCode, string> = {
   FLASH_SALE_ENDED: 'Flash sale has ended.',
   FLASH_SALE_SOLD_OUT: 'Flash-sale allocation is sold out.',
   FLASH_SALE_LIMIT_REACHED: 'Flash-sale purchase limit has been reached.',
+  FLASH_SALE_QUANTITY_EXCEEDED: 'Flash-sale quantity exceeds the per-user limit.',
 };
 
 export class FlashSaleReservationError extends InventoryOperationError {

@@ -76,12 +76,12 @@ describeWithDatabase('flash-sale database constraints', () => {
   });
 
   it.each([
-    { quantity: 0, originalPrice: 100, salePrice: 80 },
-    { quantity: 1, originalPrice: 0, salePrice: 1 },
-    { quantity: 1, originalPrice: 100, salePrice: 0 },
-    { quantity: 1, originalPrice: 100, salePrice: 100 },
-    { quantity: 1, originalPrice: 100, salePrice: 101 },
-  ])('rejects invalid quantity or price values: %o', async (item) => {
+    { stockLimit: 0, originalPrice: 100, salePrice: 80 },
+    { stockLimit: 1, originalPrice: 0, salePrice: 1 },
+    { stockLimit: 1, originalPrice: 100, salePrice: 0 },
+    { stockLimit: 1, originalPrice: 100, salePrice: 100 },
+    { stockLimit: 1, originalPrice: 100, salePrice: 101 },
+  ])('rejects invalid stockLimit or price values: %o', async (item) => {
     await expect(createFlashSale({}, item)).rejects.toBeDefined();
   });
 
@@ -106,7 +106,7 @@ describeWithDatabase('flash-sale database constraints', () => {
       endsAt?: Date;
     } = {},
     itemOverrides: {
-      quantity?: number;
+      stockLimit?: number;
       originalPrice?: number;
       salePrice?: number;
     } = {},
@@ -127,7 +127,7 @@ describeWithDatabase('flash-sale database constraints', () => {
 
   function validItem(
     overrides: {
-      quantity?: number;
+      stockLimit?: number;
       originalPrice?: number;
       salePrice?: number;
     } = {},
@@ -136,7 +136,7 @@ describeWithDatabase('flash-sale database constraints', () => {
       productSkuId,
       originalPrice: 100,
       salePrice: 80,
-      quantity: 10,
+      stockLimit: 10,
       ...overrides,
     };
   }

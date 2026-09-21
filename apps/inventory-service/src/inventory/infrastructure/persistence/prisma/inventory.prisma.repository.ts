@@ -573,8 +573,8 @@ function validateSaleReservation(
   if (saleStock.endsAt <= now) {
     throw new FlashSaleReservationError('FLASH_SALE_ENDED');
   }
-  if (item.quantity > saleStock.userLimit) {
-    throw new FlashSaleReservationError('FLASH_SALE_LIMIT_REACHED');
+  if (item.quantity > saleStock.maxQuantityPerUser) {
+    throw new FlashSaleReservationError('FLASH_SALE_QUANTITY_EXCEEDED');
   }
   if (
     claimedSaleItems.some(
@@ -587,7 +587,7 @@ function validateSaleReservation(
   }
   if (
     saleStock.reservedQuantity + saleStock.soldQuantity + item.quantity >
-    saleStock.quantityLimit
+    saleStock.stockLimit
   ) {
     throw new FlashSaleReservationError('FLASH_SALE_SOLD_OUT');
   }

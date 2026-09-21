@@ -22,6 +22,7 @@ import { CheckoutTerminalError } from '../../domain/errors/checkout-terminal.err
 import { CartOperationError } from '../../domain/errors/cart-operation.error';
 import { CartItemNotFoundError } from '../../domain/errors/cart-item-not-found.error';
 import { CartItemPricingChangedError } from '../../domain/errors/cart-item-pricing-changed.error';
+import { FlashSaleQuantityExceededError } from '../../domain/errors/flash-sale-quantity-exceeded.error';
 import { InventoryReservationFailedError } from '../../domain/errors/inventory-reservation-failed.error';
 import { InvalidCartOperationError } from '../../domain/errors/invalid-cart-operation.error';
 import { OrderCreationFailedError } from '../../domain/errors/order-creation-failed.error';
@@ -104,9 +105,13 @@ export function mapCartError(error: unknown): Error {
     return new ConflictException({ code: error.code, message: error.message });
   }
 
+  if (error instanceof FlashSaleQuantityExceededError) {
+    return new ConflictException({ code: error.code, message: error.message });
+  }
+
   if (error instanceof CheckoutTerminalError) {
     if (error.code) {
-      return new BadRequestException({ code: error.code, message: error.message });
+      return new ConflictException({ code: error.code, message: error.message });
     }
     return new BadRequestException(error.message);
   }

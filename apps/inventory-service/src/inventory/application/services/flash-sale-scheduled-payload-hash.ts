@@ -15,9 +15,8 @@ export function calculateFlashSaleScheduledPayloadHash(
       .map((item) => ({
         flashSaleItemId: item.flashSaleItemId.toString(),
         productSkuId: item.productSkuId.toString(),
-        originalPrice: item.originalPrice,
-        salePrice: item.salePrice,
-        quantityLimit: item.quantityLimit,
+        stockLimit: item.stockLimit,
+        maxQuantityPerUser: item.maxQuantityPerUser,
       })),
   };
 

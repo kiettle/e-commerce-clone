@@ -87,13 +87,14 @@ export class CatalogGatewayClient {
     });
   }
 
-  createFlashSale(body: CreateFlashSaleRequestDto): Promise<FlashSaleResponseDto> {
+  createFlashSale(body: CreateFlashSaleRequestDto, userId: number): Promise<FlashSaleResponseDto> {
     return this.httpClient.request<FlashSaleResponseDto>({
       serviceName: 'product-service',
       baseUrl: this.getProductServiceUrl(),
       path: '/api/flash-sales',
       method: 'POST',
       body,
+      headers: { 'x-user-id': String(userId) },
     });
   }
 
@@ -124,17 +125,18 @@ export class CatalogGatewayClient {
     return this.httpClient.request<FlashSaleResponseDto>({
       serviceName: 'product-service',
       baseUrl: this.getProductServiceUrl(),
-      path: `/api/flash-sales/${flashSaleId}`,
-      method: 'DELETE',
+      path: `/api/flash-sales/${flashSaleId}/cancel`,
+      method: 'POST',
     });
   }
 
-  getFlashSale(flashSaleId: number): Promise<PublicFlashSaleResponseDto> {
+  getFlashSale(flashSaleId: number, role: string): Promise<PublicFlashSaleResponseDto> {
     return this.httpClient.request<PublicFlashSaleResponseDto>({
       serviceName: 'product-service',
       baseUrl: this.getProductServiceUrl(),
       path: `/api/flash-sales/${flashSaleId}`,
       method: 'GET',
+      headers: { 'x-user-role': role },
     });
   }
 

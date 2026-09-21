@@ -1,10 +1,12 @@
 export interface FlashSaleItemCommand {
   productSkuId: bigint;
   salePrice: number;
-  quantity: number;
+  stockLimit: number;
+  maxQuantityPerUser: number;
 }
 
 export interface CreateFlashSaleCommand {
+  createdBy: bigint;
   name: string;
   description?: string | null;
   startsAt: Date;

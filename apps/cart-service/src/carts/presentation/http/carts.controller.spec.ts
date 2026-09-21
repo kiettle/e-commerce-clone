@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { CartItemPricingChangedError } from '../../domain/errors/cart-item-pricing-changed.error';
 import { CheckoutTerminalError } from '../../domain/errors/checkout-terminal.error';
@@ -20,8 +20,8 @@ describe('mapCartError', () => {
       new CheckoutTerminalError('Flash sale has ended.', 'FLASH_SALE_ENDED'),
     );
 
-    expect(mapped).toBeInstanceOf(BadRequestException);
-    expect((mapped as BadRequestException).getResponse()).toEqual({
+    expect(mapped).toBeInstanceOf(ConflictException);
+    expect((mapped as ConflictException).getResponse()).toEqual({
       code: 'FLASH_SALE_ENDED',
       message: 'Flash sale has ended.',
     });

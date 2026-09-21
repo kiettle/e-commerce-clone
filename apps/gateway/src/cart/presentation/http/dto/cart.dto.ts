@@ -87,7 +87,7 @@ export class CartItemResponseDto {
   saleEndsAt!: string | null;
 
   @ApiPropertyOptional({ example: 1, nullable: true })
-  maxPerUserQuantity!: number | null;
+  maxQuantityPerUser!: number | null;
 
   @ApiProperty({ example: 1 })
   quantity!: number;

@@ -22,7 +22,8 @@ describe('ProtobufFlashSaleEventSerializer', () => {
           {
             flashSaleItemId: '9007199254740995',
             productSkuId: '9007199254740997',
-            quantityLimit: 25,
+            stockLimit: 25,
+            maxQuantityPerUser: 1,
           },
         ],
       },
@@ -61,9 +62,8 @@ function flashSaleEvent(overrides: Record<string, unknown> = {}) {
         {
           flashSaleItemId: '9007199254740995',
           productSkuId: '9007199254740997',
-          originalPrice: '100.00',
-          salePrice: '75.00',
-          quantity: 25,
+          stockLimit: 25,
+          maxQuantityPerUser: 1,
         },
       ],
     },

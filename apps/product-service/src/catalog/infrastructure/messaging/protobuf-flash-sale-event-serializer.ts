@@ -14,9 +14,8 @@ interface FlashSalePayload {
   items: Array<{
     flashSaleItemId: string;
     productSkuId: string;
-    originalPrice: string;
-    salePrice: string;
-    quantityLimit: number;
+    stockLimit: number;
+    maxQuantityPerUser: number;
   }>;
 }
 
@@ -32,9 +31,8 @@ interface DecodedFlashSaleEventObject {
     items?: Array<{
       flashSaleItemId?: string;
       productSkuId?: string;
-      originalPrice?: string;
-      salePrice?: string;
-      quantityLimit?: number;
+      stockLimit?: number;
+      maxQuantityPerUser?: number;
     }>;
   };
 }
@@ -127,9 +125,6 @@ function parsePayload(value: unknown): FlashSalePayload {
     if (skuIds.has(item.productSkuId)) {
       throw new InvalidProductEventError('FlashSaleScheduled contains duplicate SKU IDs.');
     }
-    if (moneyCents(item.salePrice) >= moneyCents(item.originalPrice)) {
-      throw new InvalidProductEventError('Flash sale price must be below the original price.');
-    }
     itemIds.add(item.flashSaleItemId);
     skuIds.add(item.productSkuId);
   }
@@ -146,15 +141,17 @@ function parseItem(value: unknown, index: number): FlashSalePayload['items'][num
   if (!isRecord(value)) {
     throw new InvalidProductEventError(`Flash sale item at index ${index} must be an object.`);
   }
-  if (!Number.isInteger(value.quantity) || Number(value.quantity) <= 0) {
-    throw new InvalidProductEventError(`items[${index}].quantity must be a positive integer.`);
+  if (!Number.isInteger(value.stockLimit) || Number(value.stockLimit) <= 0) {
+    throw new InvalidProductEventError(`items[${index}].stockLimit must be a positive integer.`);
+  }
+  if (value.maxQuantityPerUser !== 1) {
+    throw new InvalidProductEventError(`items[${index}].maxQuantityPerUser must be 1.`);
   }
   return {
     flashSaleItemId: parsePositiveInt64(value.flashSaleItemId, `items[${index}].flashSaleItemId`),
     productSkuId: parsePositiveInt64(value.productSkuId, `items[${index}].productSkuId`),
-    originalPrice: parseMoney(value.originalPrice, `items[${index}].originalPrice`),
-    salePrice: parseMoney(value.salePrice, `items[${index}].salePrice`),
-    quantityLimit: Number(value.quantity),
+    stockLimit: Number(value.stockLimit),
+    maxQuantityPerUser: Number(value.maxQuantityPerUser),
   };
 }
 
@@ -167,17 +164,6 @@ function parsePositiveInt64(value: unknown, field: string): string {
     throw new InvalidProductEventError(`${field} must be a positive int64 value.`);
   }
   return value;
-}
-
-function parseMoney(value: unknown, field: string): string {
-  if (typeof value !== 'string' || !/^\d+\.\d{2}$/.test(value) || Number(value) <= 0) {
-    throw new InvalidProductEventError(`${field} must be a positive price with two decimals.`);
-  }
-  return value;
-}
-
-function moneyCents(value: string): bigint {
-  return BigInt(value.replace('.', ''));
 }
 
 function parseDate(value: unknown, field: string): Date {

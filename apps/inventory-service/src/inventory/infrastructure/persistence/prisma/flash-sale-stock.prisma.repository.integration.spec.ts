@@ -54,7 +54,7 @@ describeWithDatabase('PrismaFlashSaleStockRepository', () => {
     await expect(repository.initializeFromFlashSaleScheduled(event)).resolves.toBeUndefined();
 
     const conflicting = flashSaleEvent({
-      items: [{ ...event.items[0], quantityLimit: 9 }, event.items[1]],
+      items: [{ ...event.items[0], stockLimit: 9 }, event.items[1]],
     });
     await expect(repository.initializeFromFlashSaleScheduled(conflicting)).rejects.toBeInstanceOf(
       ConflictingFlashSaleEventError,
@@ -71,7 +71,7 @@ describeWithDatabase('PrismaFlashSaleStockRepository', () => {
         productSkuId: 999n,
         originalPrice: '20.00',
         salePrice: '10.00',
-        quantityLimit: 1,
+        stockLimit: 1,
         startsAt: event.startsAt,
         endsAt: event.endsAt,
       },
@@ -103,16 +103,14 @@ function flashSaleEvent(
       {
         flashSaleItemId: 501n,
         productSkuId: 1001n,
-        originalPrice: '100.00',
-        salePrice: '75.00',
-        quantityLimit: 25,
+        stockLimit: 25,
+        maxQuantityPerUser: 1,
       },
       {
         flashSaleItemId: 502n,
         productSkuId: 1002n,
-        originalPrice: '50.00',
-        salePrice: '40.00',
-        quantityLimit: 10,
+        stockLimit: 10,
+        maxQuantityPerUser: 1,
       },
     ],
     ...overrides,

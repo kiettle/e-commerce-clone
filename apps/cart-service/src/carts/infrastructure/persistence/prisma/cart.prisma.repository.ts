@@ -12,6 +12,7 @@ import { CartItemNotFoundError } from '../../../domain/errors/cart-item-not-foun
 import { CartItemPricingChangedError } from '../../../domain/errors/cart-item-pricing-changed.error';
 import { CartNotFoundError } from '../../../domain/errors/cart-not-found.error';
 import { InvalidCartOperationError } from '../../../domain/errors/invalid-cart-operation.error';
+import { FlashSaleQuantityExceededError } from '../../../domain/errors/flash-sale-quantity-exceeded.error';
 import {
   CartItemSnapshotData,
   CartRepositoryPort,
@@ -87,7 +88,7 @@ export class PrismaCartRepository implements CartRepositoryPort {
           existingItem.priceSource === CartItemPriceSource.FlashSale &&
           existingItem.quantity + quantity > (existingItem.maxPerUserQuantity ?? 1)
         ) {
-          throw new InvalidCartOperationError('Flash-sale items are limited to one per customer.');
+          throw new FlashSaleQuantityExceededError();
         }
         await transaction.cartItem.update({
           where: { id: existingItem.id },
@@ -140,7 +141,7 @@ export class PrismaCartRepository implements CartRepositoryPort {
         cartItem.priceSource === CartItemPriceSource.FlashSale &&
         quantity > (cartItem.maxPerUserQuantity ?? 1)
       ) {
-        throw new InvalidCartOperationError('Flash-sale items are limited to one per customer.');
+        throw new FlashSaleQuantityExceededError();
       }
 
       if (quantity === 0) {

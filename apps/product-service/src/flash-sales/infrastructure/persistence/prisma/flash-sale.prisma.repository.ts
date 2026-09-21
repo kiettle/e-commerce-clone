@@ -21,7 +21,11 @@ import {
 } from '../../../domain/repositories/flash-sale.repository.port';
 
 type PrismaFlashSaleWithItems = Prisma.FlashSaleGetPayload<{
-  include: { items: true };
+  include: {
+    items: {
+      include: { productSku: { include: { product: true } } };
+    };
+  };
 }>;
 
 interface LockedFlashSaleRow {
@@ -36,7 +40,8 @@ interface ScheduledItemRow {
   product_sku_id: bigint;
   regular_price: Prisma.Decimal;
   sale_price: Prisma.Decimal;
-  quantity: number;
+  stock_limit: number;
+  max_quantity_per_user: number;
 }
 
 interface LockedSkuRow {
@@ -72,17 +77,19 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
           description: flashSale.description,
           startsAt: flashSale.startsAt,
           endsAt: flashSale.endsAt,
+          createdBy: flashSale.createdBy,
           status: FlashSaleStatus.Draft,
           items: {
             create: flashSale.items.map((item) => ({
               productSkuId: item.productSkuId,
               originalPrice: item.originalPrice,
               salePrice: item.salePrice,
-              quantity: item.quantity,
+              stockLimit: item.stockLimit,
+              maxQuantityPerUser: item.maxQuantityPerUser,
             })),
           },
         },
-        include: { items: { orderBy: { id: 'asc' } } },
+        include: flashSaleItemsInclude(),
       }),
     );
 
@@ -92,7 +99,7 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
   async findById(flashSaleId: bigint): Promise<FlashSaleEntity | null> {
     const flashSale = await this.prisma.flashSale.findUnique({
       where: { id: flashSaleId },
-      include: { items: { orderBy: { id: 'asc' } } },
+      include: flashSaleItemsInclude(),
     });
 
     return flashSale ? this.toDomain(flashSale) : null;
@@ -109,7 +116,7 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
         startsAt: active ? { lte: at } : { gt: at },
         ...(active ? { endsAt: { gt: at } } : {}),
       },
-      include: { items: { orderBy: { id: 'asc' } } },
+      include: flashSaleItemsInclude(),
       orderBy: active ? [{ endsAt: 'asc' }, { id: 'asc' }] : [{ startsAt: 'asc' }, { id: 'asc' }],
     });
 
@@ -141,14 +148,15 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
             productSkuId: item.productSkuId,
             originalPrice: item.originalPrice,
             salePrice: item.salePrice,
-            quantity: item.quantity,
+            stockLimit: item.stockLimit,
+            maxQuantityPerUser: item.maxQuantityPerUser,
           })),
         });
       }
 
       return transaction.flashSale.findUniqueOrThrow({
         where: { id: flashSaleId },
-        include: { items: { orderBy: { id: 'asc' } } },
+        include: flashSaleItemsInclude(),
       });
     });
 
@@ -167,7 +175,7 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
 
       return transaction.flashSale.findUniqueOrThrow({
         where: { id: flashSaleId },
-        include: { items: { orderBy: { id: 'asc' } } },
+        include: flashSaleItemsInclude(),
       });
     });
 
@@ -193,13 +201,17 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
       validateScheduleTime(sale.starts_at, sale.ends_at, request.occurredAt);
 
       const items = await transaction.$queryRaw<ScheduledItemRow[]>(Prisma.sql`
-        SELECT "id", "product_sku_id", "regular_price", "sale_price", "quantity"
+        SELECT "id", "product_sku_id", "regular_price", "sale_price",
+               "quantity" AS "stock_limit", "max_quantity_per_user"
         FROM "flash_sale_items"
         WHERE "flash_sale_id" = ${request.flashSaleId}
         ORDER BY "product_sku_id" ASC
       `);
       if (items.length === 0) {
         throw new InvalidFlashSaleError('A flash sale must have an item before scheduling.');
+      }
+      if (items.length > 100) {
+        throw new InvalidFlashSaleError('A flash sale cannot contain more than 100 items.');
       }
 
       const skuIds = items.map((item) => item.product_sku_id);
@@ -276,9 +288,8 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
             items: items.map((item) => ({
               flashSaleItemId: item.id.toString(),
               productSkuId: item.product_sku_id.toString(),
-              originalPrice: item.regular_price.toFixed(2),
-              salePrice: item.sale_price.toFixed(2),
-              quantity: item.quantity,
+              stockLimit: item.stock_limit,
+              maxQuantityPerUser: item.max_quantity_per_user,
             })),
           },
         },
@@ -286,7 +297,7 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
 
       return transaction.flashSale.findUniqueOrThrow({
         where: { id: request.flashSaleId },
-        include: { items: { orderBy: { id: 'asc' } } },
+        include: flashSaleItemsInclude(),
       });
     });
 
@@ -308,6 +319,7 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
       startsAt: flashSale.startsAt,
       endsAt: flashSale.endsAt,
       status: flashSale.status as FlashSaleStatus,
+      createdBy: flashSale.createdBy,
       items: flashSale.items.map(
         (item) =>
           new FlashSaleItemEntity({
@@ -316,7 +328,10 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
             productSkuId: item.productSkuId,
             originalPrice: Number(item.originalPrice),
             salePrice: Number(item.salePrice),
-            quantity: item.quantity,
+            stockLimit: item.stockLimit,
+            maxQuantityPerUser: item.maxQuantityPerUser,
+            productName: item.productSku.product.name,
+            imageUrl: item.productSku.product.imageUrl,
             createdAt: item.createdAt,
             updatedAt: item.updatedAt,
           }),
@@ -334,10 +349,28 @@ function assertValidDate(value: Date): void {
 }
 
 function validateScheduleTime(startsAt: Date, endsAt: Date, now: Date): void {
-  if (startsAt.getTime() <= now.getTime()) {
-    throw new FlashSaleScheduleTimeError('Flash sale must start in the future.');
+  const leadTime = startsAt.getTime() - now.getTime();
+  const duration = endsAt.getTime() - startsAt.getTime();
+  if (leadTime < 5 * 60 * 1000) {
+    throw new FlashSaleScheduleTimeError('Flash sale must start at least five minutes from now.');
   }
-  if (endsAt.getTime() <= startsAt.getTime()) {
+  if (duration <= 0) {
     throw new FlashSaleScheduleTimeError('Flash sale duration must be positive.');
   }
+  if (duration > 24 * 60 * 60 * 1000) {
+    throw new FlashSaleScheduleTimeError('Flash sale duration cannot exceed 24 hours.');
+  }
+}
+
+function flashSaleItemsInclude() {
+  return {
+    items: {
+      orderBy: { id: 'asc' as const },
+      include: {
+        productSku: {
+          include: { product: true },
+        },
+      },
+    },
+  };
 }

@@ -412,8 +412,8 @@ async function seedSale(
       productSkuId: 1001n,
       originalPrice: '100.00',
       salePrice: '75.00',
-      quantityLimit: options.saleLimit,
-      userLimit: 1,
+      stockLimit: options.saleLimit,
+      maxQuantityPerUser: 1,
       startsAt: options.startsAt ?? new Date(Date.now() - 60_000),
       endsAt: options.endsAt ?? new Date(Date.now() + 600_000),
     },
@@ -459,5 +459,5 @@ async function expectCounters(
   expect(stock.reservedQuantity).toBeGreaterThanOrEqual(0);
   expect(sale.reservedQuantity).toBeGreaterThanOrEqual(0);
   expect(sale.soldQuantity).toBeGreaterThanOrEqual(0);
-  expect(sale.reservedQuantity + sale.soldQuantity).toBeLessThanOrEqual(sale.quantityLimit);
+  expect(sale.reservedQuantity + sale.soldQuantity).toBeLessThanOrEqual(sale.stockLimit);
 }

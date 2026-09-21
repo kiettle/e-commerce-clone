@@ -5,7 +5,7 @@ import { FlashSaleStatus } from '../../domain/enums/flash-sale-status.enum';
 import { toPublicFlashSaleResponse } from './flash-sale-response.mapper';
 
 describe('toPublicFlashSaleResponse', () => {
-  it('does not expose the configured quantity or inventory counts', () => {
+  it('does not expose the configured stockLimit or inventory counts', () => {
     const response = toPublicFlashSaleResponse(
       new FlashSaleEntity({
         id: 1n,
@@ -20,7 +20,9 @@ describe('toPublicFlashSaleResponse', () => {
             productSkuId: 101n,
             originalPrice: 100,
             salePrice: 75,
-            quantity: 20,
+            stockLimit: 20,
+            productName: 'Wireless Keyboard',
+            imageUrl: null,
           }),
         ],
         createdAt: new Date('2026-09-20T08:00:00.000Z'),
@@ -32,10 +34,14 @@ describe('toPublicFlashSaleResponse', () => {
     expect(response.items[0]).toEqual({
       id: 2,
       productSkuId: 101,
+      productName: 'Wireless Keyboard',
+      imageUrl: null,
       originalPrice: 100,
       salePrice: 75,
+      availability: 'UNKNOWN',
+      maxQuantityPerUser: 1,
     });
-    expect(response.items[0]).not.toHaveProperty('quantity');
+    expect(response.items[0]).not.toHaveProperty('stockLimit');
     expect(response.items[0]).not.toHaveProperty('availableQuantity');
   });
 });

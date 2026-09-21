@@ -111,6 +111,7 @@ model FlashSale {
   startsAt    DateTime        @map("starts_at")
   endsAt      DateTime        @map("ends_at")
   status      FlashSaleStatus @default(DRAFT)
+  createdBy   BigInt?         @map("created_by")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
   items       FlashSaleItem[]
@@ -120,16 +121,17 @@ model FlashSale {
 }
 
 model FlashSaleItem {
-  id            BigInt     @id @default(autoincrement())
-  flashSaleId   BigInt     @map("flash_sale_id")
-  productSkuId  BigInt     @map("product_sku_id")
-  originalPrice Decimal    @map("regular_price") @db.Decimal(10, 2)
-  salePrice     Decimal    @map("sale_price") @db.Decimal(10, 2)
-  quantity      Int
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
-  flashSale     FlashSale  @relation(fields: [flashSaleId], references: [id], onDelete: Cascade)
-  productSku    ProductSku @relation(fields: [productSkuId], references: [id], onDelete: Restrict)
+  id                 BigInt     @id @default(autoincrement())
+  flashSaleId        BigInt     @map("flash_sale_id")
+  productSkuId       BigInt     @map("product_sku_id")
+  originalPrice      Decimal    @map("regular_price") @db.Decimal(10, 2)
+  salePrice          Decimal    @map("sale_price") @db.Decimal(10, 2)
+  stockLimit         Int        @map("quantity")
+  maxQuantityPerUser Int        @default(1) @map("max_quantity_per_user")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  flashSale          FlashSale  @relation(fields: [flashSaleId], references: [id], onDelete: Cascade)
+  productSku         ProductSku @relation(fields: [productSkuId], references: [id], onDelete: Restrict)
 
   @@unique([flashSaleId, productSkuId])
   @@index([productSkuId])

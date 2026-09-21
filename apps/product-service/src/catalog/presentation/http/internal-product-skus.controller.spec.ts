@@ -37,7 +37,7 @@ describe('InternalProductSkusController', () => {
       flashSaleId: '50',
       flashSaleItemId: '501',
       saleEndsAt: '2026-10-01T10:00:00.000Z',
-      maxPerUserQuantity: 1,
+      maxQuantityPerUser: 1,
     });
     expect(response).not.toHaveProperty('availableQuantity');
     expect(response).not.toHaveProperty('quantity');

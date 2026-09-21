@@ -11,6 +11,7 @@ export interface FlashSaleEntityProps {
   startsAt: Date;
   endsAt: Date;
   status?: FlashSaleStatus;
+  createdBy?: bigint | null;
   items?: FlashSaleItemEntity[];
   createdAt?: Date;
   updatedAt?: Date;
@@ -34,6 +35,7 @@ export class FlashSaleEntity {
   readonly id?: bigint;
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
+  readonly createdBy: bigint | null;
 
   private currentName: string;
   private currentDescription: string | null;
@@ -54,6 +56,7 @@ export class FlashSaleEntity {
     this.currentStartsAt = new Date(props.startsAt.getTime());
     this.currentEndsAt = new Date(props.endsAt.getTime());
     this.currentStatus = status;
+    this.createdBy = props.createdBy ?? null;
     this.currentItems = [...(props.items ?? [])];
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
@@ -124,6 +127,9 @@ export class FlashSaleEntity {
     if (this.currentItems.length === 0) {
       throw new InvalidFlashSaleError('A flash sale must have an item before scheduling.');
     }
+    if (this.currentItems.length > 100) {
+      throw new InvalidFlashSaleError('A flash sale cannot contain more than 100 items.');
+    }
     this.currentStatus = FlashSaleStatus.Scheduled;
   }
 
@@ -142,7 +148,10 @@ export class FlashSaleEntity {
     const start = startsAt.getTime();
     const end = endsAt.getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
-      throw new InvalidFlashSaleError('Flash sale start time must be before its end time.');
+      throw new InvalidFlashSaleError(
+        'Flash sale start time must be before its end time.',
+        'FLASH_SALE_TIME_INVALID',
+      );
     }
   }
 
@@ -151,7 +160,10 @@ export class FlashSaleEntity {
     for (const item of items) {
       const skuId = item.productSkuId.toString();
       if (skuIds.has(skuId)) {
-        throw new InvalidFlashSaleError('A product SKU can appear only once in a flash sale.');
+        throw new InvalidFlashSaleError(
+          'A product SKU can appear only once in a flash sale.',
+          'FLASH_SALE_SKU_DUPLICATE',
+        );
       }
       skuIds.add(skuId);
     }

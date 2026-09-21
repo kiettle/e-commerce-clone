@@ -15,7 +15,8 @@ describe('CreateFlashSaleRequestDto', () => {
           productSkuId: 10,
           originalPrice: 0.01,
           salePrice: 80,
-          quantity: 2,
+          stockLimit: 2,
+          maxQuantityPerUser: 1,
         },
       ],
     });

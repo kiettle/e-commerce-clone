@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi, type Mocked } from 'vitest';
 import { CartEntity } from '../../domain/entities/cart.entity';
 import { CartItemPriceSource } from '../../domain/enums/cart-item-price-source.enum';
 import { CartStatus } from '../../domain/enums/cart-status.enum';
-import { InvalidCartOperationError } from '../../domain/errors/invalid-cart-operation.error';
+import { FlashSaleQuantityExceededError } from '../../domain/errors/flash-sale-quantity-exceeded.error';
 import { CartRepositoryPort } from '../../domain/repositories/cart.repository.port';
 import { ProductCatalogPort } from '../ports/product-catalog.port';
 import { AddCartItemUseCase } from './add-cart-item.use-case';
@@ -68,7 +68,7 @@ describe('AddCartItemUseCase sale pricing', () => {
   it('rejects an initial sale quantity above the product-owned limit', async () => {
     await expect(
       useCase.execute({ userId: 10n, productSkuId: 100n, quantity: 2 }),
-    ).rejects.toBeInstanceOf(InvalidCartOperationError);
+    ).rejects.toBeInstanceOf(FlashSaleQuantityExceededError);
     expect(carts.getOrCreateActiveCart).not.toHaveBeenCalled();
     expect(carts.addOrIncrementItem).not.toHaveBeenCalled();
   });

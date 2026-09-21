@@ -26,7 +26,7 @@ describe('HandleFlashSaleScheduledUseCase', () => {
     ['event id', { eventId: '' }],
     ['schema version', { schemaVersion: 2 }],
     ['time window', { endsAt: new Date('2026-10-01T07:00:00.000Z') }],
-    ['positive limit', { items: [{ ...command().items[0], quantityLimit: 0 }] }],
+    ['positive limit', { items: [{ ...command().items[0], stockLimit: 0 }] }],
     [
       'duplicate sale-item IDs',
       { items: [command().items[0], { ...command().items[0], productSkuId: 1002n }] },
@@ -56,9 +56,8 @@ function command(
       {
         flashSaleItemId: 501n,
         productSkuId: 1001n,
-        originalPrice: '100.00',
-        salePrice: '75.00',
-        quantityLimit: 25,
+        stockLimit: 25,
+        maxQuantityPerUser: 1,
       },
     ],
     ...overrides,

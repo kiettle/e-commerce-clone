@@ -15,9 +15,9 @@ The repository is one NestJS monorepo with six separately runnable services:
 | ------------------- | -------------------------------------------- | ------------------------------- |
 | `gateway`           | Public API boundary                          | REST in; HTTP and auth gRPC out |
 | `auth-service`      | Users, passwords, and tokens                 | REST and gRPC                   |
-| `product-service`   | Categories, products, and SKUs               | REST and Kafka producer         |
-| `inventory-service` | Stock and reservations                       | Kafka consumer and gRPC         |
-| `cart-service`      | Carts, item snapshots, and checkout attempts | REST; HTTP and gRPC clients     |
+| `product-service`   | Catalog, flash sales, and durable outbox      | REST and Kafka producer         |
+| `inventory-service` | Normal and sale stock and reservations       | Kafka consumer and gRPC         |
+| `cart-service`      | Carts, price snapshots, and checkout attempts| REST; HTTP and gRPC clients     |
 | `order-service`     | Orders and order-item snapshots              | gRPC                            |
 
 Each stateful service owns its own PostgreSQL database. Never join across those
@@ -81,10 +81,18 @@ When changing code:
   stored error text.
 - Order totals are calculated in `order-service` from the persisted checkout
   snapshot.
+- Product-service owns sale definitions and effective price snapshots;
+  inventory-service owns readiness, database-time windows, allocation,
+  one-per-user claims, and normal stock.
+- Normal and sale reservation counters move atomically. A scheduled sale is
+  active at `startsAt` and ended at `endsAt`.
+- Duplicate `FlashSaleScheduled` delivery is a no-op only when its event ID and
+  canonical payload match.
 
 These rules provide replay safety, but they are not a distributed ACID
-transaction. A background reconciliation worker and infrastructure-level proof
-are still future work.
+transaction. The integration suite proves the current PostgreSQL, Kafka, and
+service boundaries; a background checkout reconciliation worker is still
+future work.
 
 ## Checkout Retry Contract
 

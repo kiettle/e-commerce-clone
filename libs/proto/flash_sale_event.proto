@@ -29,7 +29,6 @@ message FlashSaleScheduled {
 message FlashSaleItemSnapshot {
   int64 flash_sale_item_id = 1;
   int64 product_sku_id = 2;
-  string original_price = 3;
-  string sale_price = 4;
-  int32 quantity_limit = 5;
+  int32 stock_limit = 3;
+  int32 max_quantity_per_user = 4;
 }

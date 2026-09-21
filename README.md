@@ -34,7 +34,7 @@ flowchart LR
     Cart -->|REST snapshot lookup| Product
     Cart -->|gRPC reserve/release| Inventory["Inventory service"]
     Cart -->|gRPC create| Order["Order service"]
-    Product -->|ProductCreated / Protobuf| Kafka["Redpanda (Kafka API)"]
+    Product -->|ProductCreated + FlashSaleScheduled| Kafka["Redpanda (Kafka API)"]
     Kafka -->|consumer group| Inventory
 
     Auth --- AuthDb[("auth_db")]
@@ -54,10 +54,10 @@ across service boundaries.
 | ------------------- | ---------------: | ------------------------------------------------------------------- |
 | `gateway`           |             4000 | Public HTTP entry point, auth/catalog/cart forwarding, Swagger docs |
 | `auth-service`      | 4005 / gRPC 9005 | Users, login, JWT generation, token validation                      |
-| `product-service`   |             4001 | Categories, products, SKUs, product-created events                  |
-| `inventory-service` | 4003 / gRPC 9003 | Stock rows, product event consumer, reserve/release stock           |
-| `cart-service`      |             4002 | Active carts, cart items, checkout orchestration                    |
-| `order-service`     | 4004 / gRPC 9004 | Order creation, order items, server-side totals                     |
+| `product-service`   |             4001 | Catalog, flash sales, effective pricing, transactional outbox       |
+| `inventory-service` | 4003 / gRPC 9003 | Normal/sale stock projections and reserve/commit/release            |
+| `cart-service`      |             4002 | Durable carts, price snapshots, and checkout orchestration          |
+| `order-service`     | 4004 / gRPC 9004 | Idempotent checkout orders and server-calculated totals             |
 
 ## Communication Map
 
@@ -133,6 +133,18 @@ An API retry actively resumes the stored action. The service does not yet run a
 background reconciliation worker, so pending attempts do not advance without a
 caller retry.
 
+### Flash-sale checkout
+
+```text
+schedule sale -> publish FlashSaleScheduled -> initialize sale stock
+  -> cart freezes the effective SKU price -> reserve normal + sale stock
+  -> create the idempotent order -> commit both counters -> complete cart
+```
+
+Inventory owns sale readiness, database-time windows, remaining allocation,
+per-user limits, and normal stock. Regular and sale items may coexist in the
+same atomic reservation.
+
 ## Implemented Guarantees
 
 - Inventory validates the full stock request before applying changes.
@@ -172,6 +184,12 @@ do not create a distributed ACID transaction.
 - `POST /api/products`
 - `PUT /api/products/:productId`
 - `DELETE /api/products/:productId`
+- `GET /api/flash-sales?status=active|upcoming`
+- `GET /api/flash-sales/:saleId`
+- `POST /api/flash-sales`
+- `PUT /api/flash-sales/:saleId`
+- `POST /api/flash-sales/:saleId/cancel`
+- `POST /api/flash-sales/:saleId/schedule`
 - `GET /api/carts/me`
 - `POST /api/cart-items`
 - `PUT /api/cart-items/:cartItemId`
@@ -184,13 +202,15 @@ do not create a distributed ACID transaction.
 
 All `/api` routes listed above except `POST /api/auth/login` require a bearer
 token. The public `/health`, `/hello`, and `/docs` surfaces do not. The gateway
-validates tokens through auth-service gRPC. For cart routes, it passes the
-authenticated user ID to cart-service through the internal `x-user-id` header.
+validates tokens and roles through auth-service gRPC. Product and flash-sale
+mutations require `ADMIN`; authenticated users may use the read endpoints. For
+cart routes, the gateway passes the authenticated user ID to cart-service
+through the internal `x-user-id` header.
 
 ### gRPC Contracts
 
 - Auth: `Login`, `ValidateToken`
-- Inventory: `ReserveStock`, `ReleaseStock`
+- Inventory: `ReserveStock`, `CommitStock`, `ReleaseStock`
 - Order: `CreateOrder`, `GetOrderByCheckoutId`
 
 Shared protobuf files live in `libs/proto`.
@@ -203,8 +223,8 @@ Shared protobuf files live in `libs/proto`.
 | Prisma + PostgreSQL           | Separate schema and database per stateful service                     | Strong local transactions, but no cross-service transaction or join                |
 | REST/JSON                     | Public gateway and simple internal catalog/cart calls                 | Easy to inspect; weaker contract enforcement than Protobuf                         |
 | gRPC + Protobuf               | Auth validation and checkout commands                                 | Typed and compact; harder to debug manually and currently lacks deadlines          |
-| Redpanda/Kafka API + Protobuf | Asynchronous `ProductCreated` delivery                                | Decouples inventory, while at-least-once delivery requires an idempotent consumer   |
-| JWT + bcrypt                  | Authentication and password verification                              | Stateless tokens scale well; revocation and role authorization are not implemented |
+| Redpanda/Kafka API + Protobuf | Asynchronous product and flash-sale projections                        | Decouples inventory, while at-least-once delivery requires idempotent consumers     |
+| JWT + bcrypt                  | Authentication, password verification, and gateway role enforcement    | Stateless tokens scale well, but token revocation is not implemented                |
 | React + Vite                  | Focused demo UI                                                       | Improves presentation but is not the architectural focus                           |
 
 ## Local Setup
@@ -300,7 +320,14 @@ npm run frontend:lint
 Vitest is configured for colocated `*.spec.ts` files. Focused suites cover auth,
 inventory reserve/release, order idempotency, checkout recovery, selected Prisma
 adapter behavior, and gateway checkout mapping. PostgreSQL and Kafka-dependent
-outbox scenarios run separately through `npm run test:integration`.
+outbox, flash-sale concurrency, and checkout scenarios run separately through
+`npm run test:integration`.
+
+Flash-sale delivery uses `FLASH_SALE_EVENTS_TOPIC` and
+`INVENTORY_FLASH_SALE_KAFKA_GROUP_ID`. Product outbox polling uses
+`PRODUCT_OUTBOX_POLL_INTERVAL_MS`, `PRODUCT_OUTBOX_BATCH_SIZE`,
+`PRODUCT_OUTBOX_LEASE_MS`, `PRODUCT_OUTBOX_SHUTDOWN_TIMEOUT_MS`, and
+`PRODUCT_OUTBOX_MAX_ATTEMPTS`; `.env.example` contains the local defaults.
 
 ## Basic Local Verification
 
@@ -357,7 +384,8 @@ npm run verify:migrations
 ```
 
 Verify product creation during a broker outage, duplicate Kafka delivery,
-product/outbox rollback, and competing outbox workers with:
+product/outbox rollback, competing workers, flash-sale projection, sale checkout,
+expiry, allocation races, and per-user limits with:
 
 ```bash
 npm run test:integration
@@ -367,6 +395,40 @@ This command briefly stops and restarts the local Redpanda container. It uses a
 unique Kafka topic, disposable PostgreSQL databases, isolated application ports,
 and bounded state polling. The topic, databases, and service processes are
 removed when the command exits.
+
+The sale verification creates and schedules real sales, waits with bounded
+database polling for Kafka projections, and drives cart, inventory, order, and
+product services together. It checks the happy path, expiry, broker delay,
+duplicate delivery, concurrent sold-out contention, and the one-per-user rule.
+
+Example sale creation and scheduling requests through the gateway:
+
+```bash
+curl -X POST http://localhost:4000/api/flash-sales \
+  -H 'Authorization: Bearer <admin-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Weekend sale","startsAt":"2026-09-26T03:00:00.000Z","endsAt":"2026-09-26T05:00:00.000Z","items":[{"productSkuId":1001,"salePrice":19.90,"stockLimit":5,"maxQuantityPerUser":1}]}'
+
+curl -X POST http://localhost:4000/api/flash-sales/10/schedule \
+  -H 'Authorization: Bearer <admin-token>'
+```
+
+Example sale cart and checkout requests against `cart-service`:
+
+```bash
+curl -X POST http://localhost:4002/api/cart-items \
+  -H 'Content-Type: application/json' -H 'x-user-id: 10' \
+  -d '{"productSkuId":1001,"quantity":1}'
+
+curl -X POST http://localhost:4002/api/carts/20/checkout \
+  -H 'x-user-id: 10' \
+  -H 'Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000'
+```
+
+Definite sale failures return HTTP `400` with `FLASH_SALE_NOT_READY`,
+`FLASH_SALE_NOT_ACTIVE`, `FLASH_SALE_ENDED`, `FLASH_SALE_SOLD_OUT`, or
+`FLASH_SALE_LIMIT_REACHED`. An unknown transport outcome returns `202`, stores
+`RESERVE_STOCK`, and does not call order-service.
 
 Seeded demo credentials:
 
@@ -471,16 +533,11 @@ and the complete demo path.
 
 ## Current Limitations
 
-- Unit coverage plus focused PostgreSQL and Kafka product/outbox coverage exist,
-  but there are still no complete checkout end-to-end tests.
 - Reconciliation depends on a caller retrying the same checkout key; there is no
   worker to process pending attempts automatically after a restart.
-- The frontend and demo checkout script do not yet send the required
-  `Idempotency-Key` header.
 - Committed and released reservations do not expire or get archived yet.
-- JWT authentication exists, but role-based authorization does not. Any
-  authenticated gateway user can call catalog mutation routes, and `sellerId`
-  is accepted from the request.
+- Scheduled sales cannot yet be cancelled, and there is no post-campaign
+  allocation cleanup job.
 - Internal services trust direct network access and `cart-service` trusts the
   gateway-provided `x-user-id` header. There is no mTLS or service identity.
 - Product updates/deletes do not publish inventory synchronization events.
@@ -499,10 +556,8 @@ operation are intentionally outside the current demo scope.
 
 ## Recommended Next Work
 
-1. Finish the checkout milestone: update clients and run durable reconciliation
-   work automatically.
-2. Add PostgreSQL and transport integration tests plus happy-path, replay, and
-   failure-path end-to-end tests.
+1. Run durable checkout reconciliation automatically.
+2. Add operational visibility for sale allocation and failed checkout attempts.
 3. Add metrics and read-only admin visibility for outbox backlog age and failed events.
 4. Add catalog authorization, request deadlines, correlation IDs, and a
    reproducible deployment artifact.

@@ -17,9 +17,8 @@ describe('ProtobufFlashSaleEventDeserializer', () => {
           {
             flashSaleItemId: '9007199254740995',
             productSkuId: '9007199254740997',
-            originalPrice: '100.00',
-            salePrice: '75.00',
-            quantity: 25,
+            stockLimit: 25,
+            maxQuantityPerUser: 1,
           },
         ],
       },
@@ -39,9 +38,8 @@ describe('ProtobufFlashSaleEventDeserializer', () => {
           {
             flashSaleItemId: 9007199254740995n,
             productSkuId: 9007199254740997n,
-            originalPrice: '100.00',
-            salePrice: '75.00',
-            quantityLimit: 25,
+            stockLimit: 25,
+            maxQuantityPerUser: 1,
           },
         ],
       },

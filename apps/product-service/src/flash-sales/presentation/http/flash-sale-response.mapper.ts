@@ -6,7 +6,8 @@ export interface FlashSaleItemResponse {
   productSkuId: number;
   originalPrice: number;
   salePrice: number;
-  quantity: number;
+  stockLimit: number;
+  maxQuantityPerUser: number;
 }
 
 export interface FlashSaleResponse {
@@ -21,8 +22,19 @@ export interface FlashSaleResponse {
   updatedAt: string;
 }
 
+export interface PublicFlashSaleItemResponse {
+  id: number;
+  productSkuId: number;
+  productName: string;
+  imageUrl: string | null;
+  originalPrice: number;
+  salePrice: number;
+  availability: 'UNKNOWN';
+  maxQuantityPerUser: number;
+}
+
 export interface PublicFlashSaleResponse extends Omit<FlashSaleResponse, 'items'> {
-  items: Array<Omit<FlashSaleItemResponse, 'quantity'>>;
+  items: PublicFlashSaleItemResponse[];
 }
 
 const systemClock: Clock = { now: () => new Date() };
@@ -52,7 +64,8 @@ export function toFlashSaleResponse(
       productSkuId: Number(item.productSkuId),
       originalPrice: item.originalPrice,
       salePrice: item.salePrice,
-      quantity: item.quantity,
+      stockLimit: item.stockLimit,
+      maxQuantityPerUser: item.maxQuantityPerUser,
     })),
     createdAt: flashSale.createdAt.toISOString(),
     updatedAt: flashSale.updatedAt.toISOString(),
@@ -66,11 +79,15 @@ export function toPublicFlashSaleResponse(
   const response = toFlashSaleResponse(flashSale, clock);
   return {
     ...response,
-    items: response.items.map((item) => ({
-      id: item.id,
-      productSkuId: item.productSkuId,
+    items: flashSale.items.map((item) => ({
+      id: Number(item.id),
+      productSkuId: Number(item.productSkuId),
+      productName: item.productName ?? '',
+      imageUrl: item.imageUrl ?? null,
       originalPrice: item.originalPrice,
       salePrice: item.salePrice,
+      availability: 'UNKNOWN' as const,
+      maxQuantityPerUser: item.maxQuantityPerUser,
     })),
   };
 }
