@@ -9,10 +9,12 @@
 
 Run the lanes with `npm run test:unit`, `npm run test:contract`, `npm run test:integration`, and `npm run test:e2e`.
 
-## PostgreSQL integration harness
+## PostgreSQL and Kafka integration harness
 
-`npm run test:integration` starts one disposable PostgreSQL container on a random localhost port. It creates separate auth, product, inventory, cart, and order databases whose names end in `_test`, applies every real migration, runs the integration lane serially, and removes the container even when a test fails.
+`npm run test:integration` starts disposable PostgreSQL and Redpanda containers on random localhost ports. It creates separate auth, product, inventory, cart, and order databases whose names end in `_test`, applies every real migration, runs the integration lane serially, and removes both containers even when a test fails.
+
+Kafka integration tests create a unique topic and consumer group for each case. They use bounded polling, disconnect consumers and producers in teardown, and delete their topics. The disposable Redpanda container is the final isolation boundary if a test is interrupted before topic cleanup.
 
 Use the helpers in `tests/integration/support/` to read guarded database URLs, create service-specific Prisma clients, clean tables in foreign-key-safe order, and disconnect all clients. The URL guard rejects non-local hosts and database names without the `_test` suffix. Integration tests must not read the normal development database URLs directly.
 
-Set `POSTGRES_TEST_IMAGE` only when a compatible PostgreSQL image is required. It defaults to `postgres:17-alpine`.
+Set `POSTGRES_TEST_IMAGE` or `REDPANDA_TEST_IMAGE` only when compatible test images are required. They default to `postgres:17-alpine` and `redpandadata/redpanda:v24.3.6`.

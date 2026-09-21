@@ -322,7 +322,7 @@ npm run frontend:lint
 
 Tests run in four separately configured lanes. Colocated `*.spec.ts` files are
 unit tests and need no Docker. `*.contract.spec.ts` verifies transport contracts.
-`*.integration.spec.ts` runs serially against disposable PostgreSQL databases.
+`*.integration.spec.ts` runs serially against disposable PostgreSQL and Redpanda containers.
 `tests/e2e/**/*.e2e.spec.ts` owns full-stack workflows with PostgreSQL, Redpanda,
 HTTP, and gRPC. Every runner prints its lane and only discovers its own naming
 pattern. See [tests/README.md](tests/README.md) for the conventions.

@@ -4,7 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_ID="$(date +%s)_$$_${RANDOM}"
 CONTAINER_NAME="ecommerce-postgres-integration-${RUN_ID}"
+REDPANDA_CONTAINER_NAME="ecommerce-redpanda-integration-${RUN_ID}"
 POSTGRES_IMAGE="${POSTGRES_TEST_IMAGE:-postgres:17-alpine}"
+REDPANDA_IMAGE="${REDPANDA_TEST_IMAGE:-redpandadata/redpanda:v24.3.6}"
 
 AUTH_DATABASE_NAME="ecommerce_auth_${RUN_ID}_test"
 PRODUCT_DATABASE_NAME="ecommerce_product_${RUN_ID}_test"
@@ -15,6 +17,7 @@ ORDER_DATABASE_NAME="ecommerce_order_${RUN_ID}_test"
 cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
+  docker rm -f "$REDPANDA_CONTAINER_NAME" >/dev/null 2>&1 || true
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   exit "$exit_code"
 }
@@ -39,6 +42,18 @@ wait_for_postgres() {
   exit 1
 }
 
+wait_for_redpanda() {
+  for _attempt in {1..150}; do
+    if docker exec "$REDPANDA_CONTAINER_NAME" rpk cluster health >/dev/null 2>&1; then
+      return
+    fi
+    sleep 0.2
+  done
+
+  echo '[integration] Timed out waiting for disposable Redpanda.' >&2
+  exit 1
+}
+
 create_database() {
   local database="$1"
   docker exec "$CONTAINER_NAME" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
@@ -58,6 +73,16 @@ cd "$ROOT_DIR"
 
 require_command docker
 require_command npm
+require_command node
+
+KAFKA_PORT="$(node -e '
+const net = require("node:net");
+const server = net.createServer();
+server.listen(0, "127.0.0.1", () => {
+  process.stdout.write(String(server.address().port));
+  server.close();
+});
+')"
 
 echo "[integration] Starting disposable PostgreSQL container ${CONTAINER_NAME}..."
 docker run --rm --detach \
@@ -70,6 +95,22 @@ docker run --rm --detach \
 
 wait_for_postgres
 HOST_PORT="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$CONTAINER_NAME")"
+
+echo "[integration] Starting disposable Redpanda container ${REDPANDA_CONTAINER_NAME}..."
+docker run --rm --detach \
+  --name "$REDPANDA_CONTAINER_NAME" \
+  --publish "127.0.0.1:${KAFKA_PORT}:9094" \
+  "$REDPANDA_IMAGE" \
+  redpanda start \
+  --overprovisioned \
+  --smp 1 \
+  --memory 512M \
+  --reserve-memory 0M \
+  --node-id 0 \
+  --check=false \
+  --kafka-addr "INTERNAL://0.0.0.0:9092,OUTSIDE://0.0.0.0:9094" \
+  --advertise-kafka-addr "INTERNAL://localhost:9092,OUTSIDE://127.0.0.1:${KAFKA_PORT}" >/dev/null
+wait_for_redpanda
 
 for database in \
   "$AUTH_DATABASE_NAME" \
@@ -86,6 +127,7 @@ export PRODUCT_INTEGRATION_DATABASE_URL="postgresql://postgres:postgres@127.0.0.
 export INVENTORY_INTEGRATION_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${HOST_PORT}/${INVENTORY_DATABASE_NAME}"
 export CART_INTEGRATION_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${HOST_PORT}/${CART_DATABASE_NAME}"
 export ORDER_INTEGRATION_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${HOST_PORT}/${ORDER_DATABASE_NAME}"
+export KAFKA_INTEGRATION_BROKERS="127.0.0.1:${KAFKA_PORT}"
 
 export AUTH_DATABASE_URL="$AUTH_INTEGRATION_DATABASE_URL"
 export PRODUCT_DATABASE_URL="$PRODUCT_INTEGRATION_DATABASE_URL"
