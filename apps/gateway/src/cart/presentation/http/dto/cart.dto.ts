@@ -19,6 +19,11 @@ export enum GatewayCheckoutStatus {
   ReconciliationRequired = 'RECONCILIATION_REQUIRED',
 }
 
+export enum GatewayCartItemPriceSource {
+  Regular = 'REGULAR',
+  FlashSale = 'FLASH_SALE',
+}
+
 export class AddCartItemRequestDto {
   @ApiProperty({ example: 1 })
   @Type(() => Number)
@@ -65,6 +70,24 @@ export class CartItemResponseDto {
 
   @ApiProperty({ example: 799 })
   price!: number;
+
+  @ApiProperty({ example: 999 })
+  regularPrice!: number;
+
+  @ApiProperty({ enum: GatewayCartItemPriceSource, example: 'FLASH_SALE' })
+  priceSource!: GatewayCartItemPriceSource;
+
+  @ApiPropertyOptional({ example: 10, nullable: true })
+  flashSaleId!: number | null;
+
+  @ApiPropertyOptional({ example: 101, nullable: true })
+  flashSaleItemId!: number | null;
+
+  @ApiPropertyOptional({ example: '2026-10-01T10:00:00.000Z', nullable: true })
+  saleEndsAt!: string | null;
+
+  @ApiPropertyOptional({ example: 1, nullable: true })
+  maxPerUserQuantity!: number | null;
 
   @ApiProperty({ example: 1 })
   quantity!: number;

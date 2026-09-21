@@ -11,6 +11,8 @@ export interface ProductSkuSnapshot {
   priceSource: 'REGULAR' | 'FLASH_SALE';
   flashSaleId: bigint | null;
   flashSaleItemId: bigint | null;
+  saleEndsAt: Date | null;
+  maxPerUserQuantity: number | null;
 }
 
 export interface ProductCatalogPort {

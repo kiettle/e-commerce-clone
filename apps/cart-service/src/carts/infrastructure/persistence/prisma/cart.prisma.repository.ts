@@ -7,7 +7,9 @@ import {
 import { CartItemEntity } from '../../../domain/entities/cart-item.entity';
 import { CartEntity } from '../../../domain/entities/cart.entity';
 import { CartStatus } from '../../../domain/enums/cart-status.enum';
+import { CartItemPriceSource } from '../../../domain/enums/cart-item-price-source.enum';
 import { CartItemNotFoundError } from '../../../domain/errors/cart-item-not-found.error';
+import { CartItemPricingChangedError } from '../../../domain/errors/cart-item-pricing-changed.error';
 import { CartNotFoundError } from '../../../domain/errors/cart-not-found.error';
 import { InvalidCartOperationError } from '../../../domain/errors/invalid-cart-operation.error';
 import {
@@ -78,16 +80,18 @@ export class PrismaCartRepository implements CartRepositoryPort {
       });
 
       if (existingItem) {
+        if (!samePricingContext(existingItem, item)) {
+          throw new CartItemPricingChangedError();
+        }
+        if (
+          existingItem.priceSource === CartItemPriceSource.FlashSale &&
+          existingItem.quantity + quantity > (existingItem.maxPerUserQuantity ?? 1)
+        ) {
+          throw new InvalidCartOperationError('Flash-sale items are limited to one per customer.');
+        }
         await transaction.cartItem.update({
           where: { id: existingItem.id },
           data: {
-            productId: item.productId,
-            productName: item.productName,
-            imageUrl: item.imageUrl,
-            skuCode: item.skuCode,
-            price: item.price,
-            flashSaleId: item.flashSaleId,
-            flashSaleItemId: item.flashSaleItemId,
             quantity: {
               increment: quantity,
             },
@@ -105,6 +109,10 @@ export class PrismaCartRepository implements CartRepositoryPort {
             flashSaleItemId: item.flashSaleItemId,
             skuCode: item.skuCode,
             price: item.price,
+            regularPrice: item.regularPrice,
+            priceSource: item.priceSource,
+            saleEndsAt: item.saleEndsAt,
+            maxPerUserQuantity: item.maxPerUserQuantity,
             quantity,
           },
         });
@@ -127,6 +135,13 @@ export class PrismaCartRepository implements CartRepositoryPort {
       const activeCart = await this.findActiveCartById(transaction, cartItem.cartId);
       assertActiveCart(activeCart);
       await assertCartNotFrozen(transaction, cartItem.cartId);
+
+      if (
+        cartItem.priceSource === CartItemPriceSource.FlashSale &&
+        quantity > (cartItem.maxPerUserQuantity ?? 1)
+      ) {
+        throw new InvalidCartOperationError('Flash-sale items are limited to one per customer.');
+      }
 
       if (quantity === 0) {
         await transaction.cartItem.delete({
@@ -263,11 +278,27 @@ export class PrismaCartRepository implements CartRepositoryPort {
       flashSaleItemId: item.flashSaleItemId,
       skuCode: item.skuCode,
       price: Number(item.price),
+      regularPrice: Number(item.regularPrice),
+      priceSource: item.priceSource as CartItemPriceSource,
+      saleEndsAt: item.saleEndsAt,
+      maxPerUserQuantity: item.maxPerUserQuantity,
       quantity: item.quantity,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     });
   }
+}
+
+function samePricingContext(existing: PrismaCartItem, incoming: CartItemSnapshotData): boolean {
+  return (
+    existing.priceSource === incoming.priceSource &&
+    Number(existing.price) === incoming.price &&
+    Number(existing.regularPrice) === incoming.regularPrice &&
+    existing.flashSaleId === (incoming.flashSaleId ?? null) &&
+    existing.flashSaleItemId === (incoming.flashSaleItemId ?? null) &&
+    existing.saleEndsAt?.getTime() === incoming.saleEndsAt?.getTime() &&
+    existing.maxPerUserQuantity === (incoming.maxPerUserQuantity ?? null)
+  );
 }
 
 function cartItemsInclude() {

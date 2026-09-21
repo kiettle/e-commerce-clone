@@ -32,6 +32,11 @@ enum ReconciliationAction {
   COMPLETE_CART
 }
 
+enum CartItemPriceSource {
+  REGULAR
+  FLASH_SALE
+}
+
 model Cart {
   id              BigInt           @id @default(autoincrement())
   userId          BigInt           @map("user_id")
@@ -71,20 +76,24 @@ model CheckoutAttempt {
 }
 
 model CartItem {
-  id              BigInt   @id @default(autoincrement())
-  cartId          BigInt   @map("cart_id")
-  productId       BigInt   @map("product_id")
-  productName     String   @map("product_name") @db.VarChar(255)
-  imageUrl        String?  @map("image_url")
-  productSkuId    BigInt   @map("product_sku_id")
-  flashSaleId     BigInt?  @map("flash_sale_id")
-  flashSaleItemId BigInt?  @map("flash_sale_item_id")
-  skuCode         String   @map("sku_code") @db.VarChar(255)
-  price           Decimal  @db.Decimal(10, 2)
-  quantity        Int
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  cart            Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  id                 BigInt              @id @default(autoincrement())
+  cartId             BigInt              @map("cart_id")
+  productId          BigInt              @map("product_id")
+  productName        String              @map("product_name") @db.VarChar(255)
+  imageUrl           String?             @map("image_url")
+  productSkuId       BigInt              @map("product_sku_id")
+  flashSaleId        BigInt?             @map("flash_sale_id")
+  flashSaleItemId    BigInt?             @map("flash_sale_item_id")
+  skuCode            String              @map("sku_code") @db.VarChar(255)
+  price              Decimal             @db.Decimal(10, 2)
+  regularPrice       Decimal             @map("regular_price") @db.Decimal(10, 2)
+  priceSource        CartItemPriceSource @default(REGULAR) @map("price_source")
+  saleEndsAt         DateTime?           @map("sale_ends_at")
+  maxPerUserQuantity Int?                @map("max_per_user_quantity")
+  quantity           Int
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  cart               Cart                @relation(fields: [cartId], references: [id], onDelete: Cascade)
 
   @@unique([cartId, productSkuId])
   @@index([cartId])

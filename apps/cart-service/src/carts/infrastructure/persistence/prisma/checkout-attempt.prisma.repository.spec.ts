@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CheckoutStatus } from '../../../domain/enums/checkout-status.enum';
 import { ReconciliationAction } from '../../../domain/enums/reconciliation-action.enum';
 import { CheckoutConflictError } from '../../../domain/errors/checkout-conflict.error';
+import { InvalidCartOperationError } from '../../../domain/errors/invalid-cart-operation.error';
 import { PrismaCheckoutAttemptRepository } from './checkout-attempt.prisma.repository';
 import { PrismaService } from './prisma.service';
 
@@ -16,9 +17,7 @@ describe('PrismaCheckoutAttemptRepository startOrLoad', () => {
         findUnique: vi.fn().mockResolvedValue(winner),
       },
     };
-    const repository = new PrismaCheckoutAttemptRepository(
-      prisma as unknown as PrismaService,
-    );
+    const repository = new PrismaCheckoutAttemptRepository(prisma as unknown as PrismaService);
 
     const result = await repository.startOrLoad(10n, 20n, idempotencyKey);
 
@@ -44,16 +43,52 @@ describe('PrismaCheckoutAttemptRepository startOrLoad', () => {
           ),
       },
     };
-    const repository = new PrismaCheckoutAttemptRepository(
-      prisma as unknown as PrismaService,
-    );
+    const repository = new PrismaCheckoutAttemptRepository(prisma as unknown as PrismaService);
 
-    await expect(
-      repository.startOrLoad(10n, 20n, idempotencyKey),
-    ).rejects.toBeInstanceOf(CheckoutConflictError);
+    await expect(repository.startOrLoad(10n, 20n, idempotencyKey)).rejects.toBeInstanceOf(
+      CheckoutConflictError,
+    );
     expect(prisma.checkoutAttempt.findUnique).toHaveBeenLastCalledWith({
       where: { cartId: 20n },
     });
+  });
+
+  it('rejects an expired stored sale before creating a checkout attempt', async () => {
+    const transaction = {
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ now: new Date('2026-10-01T10:00:00.000Z') }]),
+      cart: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 20n,
+          userId: 10n,
+          status: 'ACTIVE',
+          items: [
+            {
+              productSkuId: 100n,
+              priceSource: 'FLASH_SALE',
+              saleEndsAt: new Date('2026-10-01T10:00:00.000Z'),
+            },
+          ],
+        }),
+      },
+      checkoutAttempt: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn(),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (work: (client: typeof transaction) => unknown) =>
+        work(transaction),
+      ),
+    };
+    const repository = new PrismaCheckoutAttemptRepository(prisma as unknown as PrismaService);
+
+    await expect(repository.startOrLoad(10n, 20n, idempotencyKey)).rejects.toBeInstanceOf(
+      InvalidCartOperationError,
+    );
+    expect(transaction.checkoutAttempt.create).not.toHaveBeenCalled();
   });
 });
 
@@ -66,14 +101,9 @@ describe('PrismaCheckoutAttemptRepository successful transitions', () => {
         reconciliationAction: ReconciliationAction.CommitStock,
       }),
     );
-    const repository = new PrismaCheckoutAttemptRepository(
-      prisma as unknown as PrismaService,
-    );
+    const repository = new PrismaCheckoutAttemptRepository(prisma as unknown as PrismaService);
 
-    await repository.markOrderConfirmed(
-      '018f47a1-7b72-4c7f-8c52-f06612de3377',
-      501n,
-    );
+    await repository.markOrderConfirmed('018f47a1-7b72-4c7f-8c52-f06612de3377', 501n);
 
     expect(prisma.checkoutAttempt.updateMany).toHaveBeenCalledWith({
       where: {
@@ -97,9 +127,7 @@ describe('PrismaCheckoutAttemptRepository successful transitions', () => {
         reconciliationAction: ReconciliationAction.CompleteCart,
       }),
     );
-    const repository = new PrismaCheckoutAttemptRepository(
-      prisma as unknown as PrismaService,
-    );
+    const repository = new PrismaCheckoutAttemptRepository(prisma as unknown as PrismaService);
 
     await repository.markStockCommitted('018f47a1-7b72-4c7f-8c52-f06612de3377');
 

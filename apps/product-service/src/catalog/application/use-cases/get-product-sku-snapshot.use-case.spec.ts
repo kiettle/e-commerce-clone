@@ -6,6 +6,8 @@ import {
 } from './get-product-sku-snapshot.use-case';
 
 describe('GetProductSkuSnapshotUseCase', () => {
+  const saleEndsAt = new Date('2026-10-01T10:00:00.000Z');
+
   it.each([
     [null, 100, ProductPriceSource.Regular],
     [75, 75, ProductPriceSource.FlashSale],
@@ -21,6 +23,7 @@ describe('GetProductSkuSnapshotUseCase', () => {
         activeSalePrice,
         flashSaleId: activeSalePrice === null ? null : 50n,
         flashSaleItemId: activeSalePrice === null ? null : 501n,
+        saleEndsAt: activeSalePrice === null ? null : saleEndsAt,
       }),
     } as ProductSkuSnapshotRepositoryPort;
 
@@ -28,6 +31,8 @@ describe('GetProductSkuSnapshotUseCase', () => {
       {
         effectivePrice,
         priceSource,
+        saleEndsAt: activeSalePrice === null ? null : saleEndsAt,
+        maxPerUserQuantity: activeSalePrice === null ? null : 1,
       },
     );
   });

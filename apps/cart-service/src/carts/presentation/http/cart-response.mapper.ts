@@ -2,6 +2,7 @@ import { CartItemEntity } from '../../domain/entities/cart-item.entity';
 import { CartEntity } from '../../domain/entities/cart.entity';
 import { CheckoutAttemptEntity } from '../../domain/entities/checkout-attempt.entity';
 import { CheckoutStatus } from '../../domain/enums/checkout-status.enum';
+import { CartItemPriceSource } from '../../domain/enums/cart-item-price-source.enum';
 
 export interface CartItemResponse {
   id: number;
@@ -12,6 +13,12 @@ export interface CartItemResponse {
   productSkuId: number;
   skuCode: string;
   price: number;
+  regularPrice: number;
+  priceSource: CartItemPriceSource;
+  flashSaleId: number | null;
+  flashSaleItemId: number | null;
+  saleEndsAt: string | null;
+  maxPerUserQuantity: number | null;
   quantity: number;
   subtotal: number;
 }
@@ -56,16 +63,13 @@ export function toCartResponse(cart: CartEntity): CartResponse {
   };
 }
 
-export function toCheckoutStatusResponse(
-  attempt: CheckoutAttemptEntity,
-): CheckoutStatusResponse {
+export function toCheckoutStatusResponse(attempt: CheckoutAttemptEntity): CheckoutStatusResponse {
   return {
     checkoutId: attempt.id,
     cartId: Number(attempt.cartId),
     status: attempt.status,
     orderId: attempt.orderId == null ? null : Number(attempt.orderId),
-    lastError:
-      attempt.lastError == null ? null : publicCheckoutError(attempt.status),
+    lastError: attempt.lastError == null ? null : publicCheckoutError(attempt.status),
     createdAt: attempt.createdAt.toISOString(),
     updatedAt: attempt.updatedAt.toISOString(),
   };
@@ -89,6 +93,12 @@ function toCartItemResponse(item: CartItemEntity): CartItemResponse {
     productSkuId: Number(item.productSkuId),
     skuCode: item.skuCode,
     price: item.price,
+    regularPrice: item.regularPrice,
+    priceSource: item.priceSource,
+    flashSaleId: item.flashSaleId == null ? null : Number(item.flashSaleId),
+    flashSaleItemId: item.flashSaleItemId == null ? null : Number(item.flashSaleItemId),
+    saleEndsAt: item.saleEndsAt?.toISOString() ?? null,
+    maxPerUserQuantity: item.maxPerUserQuantity,
     quantity: item.quantity,
     subtotal: item.subtotal,
   };

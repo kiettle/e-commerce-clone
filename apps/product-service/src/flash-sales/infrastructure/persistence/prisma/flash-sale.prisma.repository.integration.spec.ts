@@ -189,8 +189,18 @@ describeWithDatabase('PrismaFlashSaleRepository', () => {
       firstSkuId,
     );
 
-    expect(atStart).toMatchObject({ effectivePrice: 80, priceSource: 'FLASH_SALE' });
-    expect(atEnd).toMatchObject({ effectivePrice: 100, priceSource: 'REGULAR' });
+    expect(atStart).toMatchObject({
+      effectivePrice: 80,
+      priceSource: 'FLASH_SALE',
+      saleEndsAt: endsAt,
+      maxPerUserQuantity: 1,
+    });
+    expect(atEnd).toMatchObject({
+      effectivePrice: 100,
+      priceSource: 'REGULAR',
+      saleEndsAt: null,
+      maxPerUserQuantity: null,
+    });
   });
 
   it('refuses to choose between multiple active sale prices for one SKU', async () => {

@@ -15,6 +15,8 @@ interface ProductSkuSnapshotResponse {
   priceSource: ProductPriceSource;
   flashSaleId: string | null;
   flashSaleItemId: string | null;
+  saleEndsAt: string | null;
+  maxPerUserQuantity: number | null;
 }
 
 @Controller('internal/product-skus')
@@ -35,6 +37,7 @@ export class InternalProductSkusController {
       productSkuId: snapshot.productSkuId.toString(),
       flashSaleId: snapshot.flashSaleId?.toString() ?? null,
       flashSaleItemId: snapshot.flashSaleItemId?.toString() ?? null,
+      saleEndsAt: snapshot.saleEndsAt?.toISOString() ?? null,
     };
   }
 }

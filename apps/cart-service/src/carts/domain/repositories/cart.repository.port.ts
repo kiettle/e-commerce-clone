@@ -1,4 +1,5 @@
 import { CartEntity } from '../entities/cart.entity';
+import { CartItemPriceSource } from '../enums/cart-item-price-source.enum';
 
 export const CART_REPOSITORY = Symbol('CART_REPOSITORY');
 
@@ -11,6 +12,10 @@ export interface CartItemSnapshotData {
   flashSaleItemId?: bigint | null;
   skuCode: string;
   price: number;
+  regularPrice: number;
+  priceSource: CartItemPriceSource;
+  saleEndsAt?: Date | null;
+  maxPerUserQuantity?: number | null;
 }
 
 export interface CartRepositoryPort {

@@ -21,6 +21,7 @@ import { CheckoutNotFoundError } from '../../domain/errors/checkout-not-found.er
 import { CheckoutTerminalError } from '../../domain/errors/checkout-terminal.error';
 import { CartOperationError } from '../../domain/errors/cart-operation.error';
 import { CartItemNotFoundError } from '../../domain/errors/cart-item-not-found.error';
+import { CartItemPricingChangedError } from '../../domain/errors/cart-item-pricing-changed.error';
 import { InventoryReservationFailedError } from '../../domain/errors/inventory-reservation-failed.error';
 import { InvalidCartOperationError } from '../../domain/errors/invalid-cart-operation.error';
 import { OrderCreationFailedError } from '../../domain/errors/order-creation-failed.error';
@@ -45,9 +46,7 @@ export class CartsController {
   async getActiveCart(
     @Headers('x-user-id') userIdHeader: string | undefined,
   ): Promise<CartResponse> {
-    const cart = await this.getActiveCartUseCase.execute(
-      parseUserIdHeader(userIdHeader),
-    );
+    const cart = await this.getActiveCartUseCase.execute(parseUserIdHeader(userIdHeader));
 
     return toCartResponse(cart);
   }
@@ -99,6 +98,10 @@ export function mapCartError(error: unknown): Error {
 
   if (error instanceof CheckoutConflictError) {
     return new ConflictException(error.message);
+  }
+
+  if (error instanceof CartItemPricingChangedError) {
+    return new ConflictException({ code: error.code, message: error.message });
   }
 
   if (error instanceof CheckoutTerminalError) {

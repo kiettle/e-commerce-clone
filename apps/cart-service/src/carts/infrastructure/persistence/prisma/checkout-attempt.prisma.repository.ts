@@ -13,6 +13,7 @@ import {
   CheckoutItemSnapshot,
 } from '../../../domain/entities/checkout-attempt.entity';
 import { CartStatus } from '../../../domain/enums/cart-status.enum';
+import { CartItemPriceSource } from '../../../domain/enums/cart-item-price-source.enum';
 import { CheckoutStatus } from '../../../domain/enums/checkout-status.enum';
 import { ReconciliationAction } from '../../../domain/enums/reconciliation-action.enum';
 import { CartNotFoundError } from '../../../domain/errors/cart-not-found.error';
@@ -86,6 +87,21 @@ export class PrismaCheckoutAttemptRepository implements CheckoutAttemptRepositor
 
         if (cart.items.length === 0) {
           throw new InvalidCartOperationError('Cart must contain at least one item.');
+        }
+
+        const [{ now }] = await transaction.$queryRaw<Array<{ now: Date }>>`
+          SELECT clock_timestamp() AS "now"
+        `;
+        if (
+          cart.items.some(
+            (item) =>
+              item.priceSource === CartItemPriceSource.FlashSale &&
+              (item.saleEndsAt == null || item.saleEndsAt <= now),
+          )
+        ) {
+          throw new InvalidCartOperationError(
+            'Flash-sale pricing expired. Remove the item and add it again.',
+          );
         }
 
         const hashInput = {

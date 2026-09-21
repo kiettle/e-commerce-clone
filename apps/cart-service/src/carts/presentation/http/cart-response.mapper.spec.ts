@@ -1,8 +1,52 @@
 import { describe, expect, it } from 'vitest';
 import { CheckoutAttemptEntity } from '../../domain/entities/checkout-attempt.entity';
+import { CartItemEntity } from '../../domain/entities/cart-item.entity';
+import { CartEntity } from '../../domain/entities/cart.entity';
+import { CartItemPriceSource } from '../../domain/enums/cart-item-price-source.enum';
+import { CartStatus } from '../../domain/enums/cart-status.enum';
 import { CheckoutStatus } from '../../domain/enums/checkout-status.enum';
 import { ReconciliationAction } from '../../domain/enums/reconciliation-action.enum';
-import { toCheckoutStatusResponse } from './cart-response.mapper';
+import { toCartResponse, toCheckoutStatusResponse } from './cart-response.mapper';
+
+describe('toCartResponse', () => {
+  it('exposes enough stored pricing context to explain a sale price', () => {
+    const saleEndsAt = new Date('2026-10-01T10:00:00.000Z');
+    const cart = new CartEntity({
+      id: 20n,
+      userId: 10n,
+      status: CartStatus.Active,
+      items: [
+        new CartItemEntity({
+          id: 30n,
+          cartId: 20n,
+          productId: 90n,
+          productName: 'Keyboard',
+          imageUrl: null,
+          productSkuId: 100n,
+          skuCode: 'KB-BLACK',
+          price: 75,
+          regularPrice: 100,
+          priceSource: CartItemPriceSource.FlashSale,
+          flashSaleId: 50n,
+          flashSaleItemId: 501n,
+          saleEndsAt,
+          maxPerUserQuantity: 1,
+          quantity: 1,
+        }),
+      ],
+    });
+
+    expect(toCartResponse(cart).items[0]).toMatchObject({
+      price: 75,
+      regularPrice: 100,
+      priceSource: 'FLASH_SALE',
+      flashSaleId: 50,
+      flashSaleItemId: 501,
+      saleEndsAt: '2026-10-01T10:00:00.000Z',
+      maxPerUserQuantity: 1,
+    });
+  });
+});
 
 describe('toCheckoutStatusResponse', () => {
   const checkoutId = '018f47a1-7b72-4c7f-8c52-f06612de3377';
@@ -35,9 +79,7 @@ describe('toCheckoutStatusResponse', () => {
       createdAt: '2026-09-16T08:00:00.000Z',
       updatedAt: '2026-09-16T08:00:05.000Z',
     });
-    expect(JSON.stringify(toCheckoutStatusResponse(attempt))).not.toContain(
-      'internal-host',
-    );
+    expect(JSON.stringify(toCheckoutStatusResponse(attempt))).not.toContain('internal-host');
     expect(toCheckoutStatusResponse(attempt)).not.toHaveProperty('leaseOwner');
     expect(toCheckoutStatusResponse(attempt)).not.toHaveProperty('requestHash');
   });

@@ -17,6 +17,8 @@ interface ProductSkuSnapshotResponse {
   priceSource: 'REGULAR' | 'FLASH_SALE';
   flashSaleId: string | null;
   flashSaleItemId: string | null;
+  saleEndsAt: string | null;
+  maxPerUserQuantity: number | null;
 }
 
 @Injectable()
@@ -51,6 +53,8 @@ export class ProductHttpCatalogClient implements ProductCatalogPort {
         priceSource: snapshot.priceSource,
         flashSaleId: snapshot.flashSaleId == null ? null : BigInt(snapshot.flashSaleId),
         flashSaleItemId: snapshot.flashSaleItemId == null ? null : BigInt(snapshot.flashSaleItemId),
+        saleEndsAt: snapshot.saleEndsAt == null ? null : new Date(snapshot.saleEndsAt),
+        maxPerUserQuantity: snapshot.maxPerUserQuantity,
       };
     } catch (error) {
       if (error instanceof ProductSnapshotUnavailableError) {

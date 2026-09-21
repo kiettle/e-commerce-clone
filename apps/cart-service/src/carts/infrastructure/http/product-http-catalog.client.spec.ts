@@ -19,6 +19,8 @@ describe('ProductHttpCatalogClient', () => {
           priceSource: 'FLASH_SALE',
           flashSaleId: '50',
           flashSaleItemId: '501',
+          saleEndsAt: '2026-10-01T10:00:00.000Z',
+          maxPerUserQuantity: 1,
         }),
         { status: 200 },
       ),
@@ -37,6 +39,8 @@ describe('ProductHttpCatalogClient', () => {
       priceSource: 'FLASH_SALE',
       flashSaleId: 50n,
       flashSaleItemId: 501n,
+      saleEndsAt: new Date('2026-10-01T10:00:00.000Z'),
+      maxPerUserQuantity: 1,
     });
     expect(fetchMock).toHaveBeenCalledWith(
       'http://product-service:4001/internal/product-skus/101/snapshot',

@@ -29,7 +29,12 @@ export class PrismaProductSkuSnapshotRepository implements ProductSkuSnapshotRep
               endsAt: { gt: at },
             },
           },
-          select: { id: true, flashSaleId: true, salePrice: true },
+          select: {
+            id: true,
+            flashSaleId: true,
+            salePrice: true,
+            flashSale: { select: { endsAt: true } },
+          },
           take: 2,
         },
       },
@@ -53,6 +58,7 @@ export class PrismaProductSkuSnapshotRepository implements ProductSkuSnapshotRep
         sku.flashSaleItems.length === 1 ? Number(sku.flashSaleItems[0].salePrice) : null,
       flashSaleId: sku.flashSaleItems.length === 1 ? sku.flashSaleItems[0].flashSaleId : null,
       flashSaleItemId: sku.flashSaleItems.length === 1 ? sku.flashSaleItems[0].id : null,
+      saleEndsAt: sku.flashSaleItems.length === 1 ? sku.flashSaleItems[0].flashSale.endsAt : null,
     };
   }
 }

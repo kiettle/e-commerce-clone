@@ -10,6 +10,7 @@ export interface StoredProductSkuSnapshot {
   activeSalePrice: number | null;
   flashSaleId: bigint | null;
   flashSaleItemId: bigint | null;
+  saleEndsAt: Date | null;
 }
 
 export interface ProductSkuSnapshotRepositoryPort {
