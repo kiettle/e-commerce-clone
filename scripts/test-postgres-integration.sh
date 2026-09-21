@@ -28,7 +28,8 @@ require_command() {
 
 wait_for_postgres() {
   for _attempt in {1..150}; do
-    if docker exec "$CONTAINER_NAME" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+    if docker logs "$CONTAINER_NAME" 2>&1 | grep -q 'PostgreSQL init process complete' && \
+      docker exec "$CONTAINER_NAME" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
       return
     fi
     sleep 0.2

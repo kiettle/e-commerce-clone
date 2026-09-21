@@ -55,6 +55,17 @@ export class PrismaCheckoutAttemptRepository implements CheckoutAttemptRepositor
       const attempt = await this.prisma.$transaction(async (transaction) => {
         await lockCart(transaction, cartId);
 
+        const existingKeyAttempt = await transaction.checkoutAttempt.findUnique({
+          where: { userId_idempotencyKey: { userId, idempotencyKey } },
+        });
+        if (existingKeyAttempt) {
+          if (existingKeyAttempt.cartId !== cartId) {
+            throw new CheckoutConflictError('This idempotency key belongs to another cart.');
+          }
+
+          return existingKeyAttempt;
+        }
+
         const cart = await transaction.cart.findUnique({
           where: { id: cartId },
           include: { items: { orderBy: { id: 'asc' } } },
