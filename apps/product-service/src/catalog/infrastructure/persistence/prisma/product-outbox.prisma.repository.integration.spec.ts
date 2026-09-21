@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../../../../../../../prisma/generated/product';
 import { ProductOutboxStatus } from '../../../application/enums/product-outbox-status.enum';
 import { ProductEventTransportPort } from '../../../application/ports/product-event-transport.port';
+import { ClaimedProductOutboxEvent } from '../../../application/ports/product-outbox.repository.port';
 import { ProductOutboxPublisherWorker } from '../../messaging/product-outbox-publisher.worker';
 import { PrismaProductOutboxRepository } from './product-outbox.prisma.repository';
 import { PrismaService } from './prisma.service';
@@ -17,7 +18,9 @@ const leaseUntil = new Date('2026-09-20T12:05:00.000Z');
 
 describeWithDatabase('PrismaProductOutboxRepository', () => {
   let prisma: PrismaClient;
+  let competingPrisma: PrismaClient;
   let repository: PrismaProductOutboxRepository;
+  let competingRepository: PrismaProductOutboxRepository;
 
   beforeAll(() => {
     if (!integrationDatabaseUrl) {
@@ -32,7 +35,13 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
     prisma = new PrismaClient({
       adapter: new PrismaPg({ connectionString: integrationDatabaseUrl }),
     });
+    competingPrisma = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: integrationDatabaseUrl }),
+    });
     repository = new PrismaProductOutboxRepository(prisma as unknown as PrismaService);
+    competingRepository = new PrismaProductOutboxRepository(
+      competingPrisma as unknown as PrismaService,
+    );
   });
 
   beforeEach(async () => {
@@ -40,26 +49,65 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
   });
 
   afterAll(async () => {
-    await prisma?.$disconnect();
+    await Promise.all([prisma?.$disconnect(), competingPrisma?.$disconnect()]);
   });
 
-  it('lets two workers claim disjoint batches', async () => {
-    await Promise.all([
-      insertEvent({ id: eventId(1), createdAt: new Date('2026-09-20T10:00:01Z') }),
-      insertEvent({ id: eventId(2), createdAt: new Date('2026-09-20T10:00:02Z') }),
-      insertEvent({ id: eventId(3), createdAt: new Date('2026-09-20T10:00:03Z') }),
-      insertEvent({ id: eventId(4), createdAt: new Date('2026-09-20T10:00:04Z') }),
-    ]);
+  it('lets two workers claim all 50 due events in disjoint batches', async () => {
+    await Promise.all(
+      Array.from({ length: 50 }, (_, index) =>
+        insertEvent({
+          id: eventId(index + 1),
+          createdAt: new Date(dueAt.getTime() + index),
+        }),
+      ),
+    );
 
     const [workerA, workerB] = await Promise.all([
-      repository.claimBatch(claimRequest('worker-a', 2)),
-      repository.claimBatch(claimRequest('worker-b', 2)),
+      repository.claimBatch(claimRequest('worker-a', 25)),
+      competingRepository.claimBatch(claimRequest('worker-b', 25)),
     ]);
 
-    expect(workerA).toHaveLength(2);
-    expect(workerB).toHaveLength(2);
-    expect(new Set([...workerA, ...workerB].map((event) => event.id)).size).toBe(4);
-    expect(workerA.some((event) => workerB.some((other) => other.id === event.id))).toBe(false);
+    const claimedIds = [...workerA, ...workerB].map((event) => event.id);
+    expect(workerA).toHaveLength(25);
+    expect(workerB).toHaveLength(25);
+    expect(new Set(claimedIds).size).toBe(50);
+    expect(claimedIds).toEqual(
+      expect.arrayContaining(Array.from({ length: 50 }, (_, index) => eventId(index + 1))),
+    );
+    await expect(
+      prisma.productOutboxEvent.count({
+        where: {
+          status: ProductOutboxStatus.Processing,
+          leaseOwner: { in: ['worker-a', 'worker-b'] },
+        },
+      }),
+    ).resolves.toBe(50);
+  });
+
+  it('uses SKIP LOCKED to claim an unlocked due event without waiting for another transaction', async () => {
+    await insertEvent({ id: eventId(1), createdAt: new Date('2026-09-20T10:00:01Z') });
+    await insertEvent({ id: eventId(2), createdAt: new Date('2026-09-20T10:00:02Z') });
+    const rowLocked = deferred<void>();
+    const releaseLock = deferred<void>();
+    const lockingTransaction = competingPrisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw`
+        SELECT "id"
+        FROM "product_outbox_events"
+        WHERE "id" = ${eventId(1)}::uuid
+        FOR UPDATE
+      `;
+      rowLocked.resolve();
+      await releaseLock.promise;
+    });
+
+    await rowLocked.promise;
+    try {
+      const claimed = await repository.claimBatch(claimRequest('worker-b', 2));
+      expect(claimed.map((event) => event.id)).toEqual([eventId(2)]);
+    } finally {
+      releaseLock.resolve();
+      await lockingTransaction;
+    }
   });
 
   it('does not steal an active lease', async () => {
@@ -244,6 +292,82 @@ describeWithDatabase('PrismaProductOutboxRepository', () => {
       leaseOwner: null,
       leaseUntil: null,
     });
+  });
+
+  it('republishes the same event after a successful publish loses its database acknowledgement', async () => {
+    await insertEvent({ id: eventId(1) });
+    const publishedIds: string[] = [];
+    const transport = recordingTransport(publishedIds);
+    const firstLeaseUntil = new Date('2026-09-20T12:05:00.000Z');
+    const reclaimAt = new Date('2026-09-20T12:05:00.001Z');
+    const secondLeaseUntil = new Date('2026-09-20T12:10:00.000Z');
+
+    const [firstClaim] = await repository.claimBatch({
+      limit: 1,
+      leaseOwner: 'worker-a',
+      now,
+      leaseUntil: firstLeaseUntil,
+    });
+    await transport.publish(toTransportEvent(firstClaim));
+
+    const [secondClaim] = await competingRepository.claimBatch({
+      limit: 1,
+      leaseOwner: 'worker-b',
+      now: reclaimAt,
+      leaseUntil: secondLeaseUntil,
+    });
+    await transport.publish(toTransportEvent(secondClaim));
+    await expect(
+      competingRepository.markPublished(secondClaim.id, secondClaim.leaseOwner, reclaimAt),
+    ).resolves.toBe(true);
+
+    expect(firstClaim.id).toBe(secondClaim.id);
+    expect(publishedIds).toEqual([eventId(1), eventId(1)]);
+    await expect(
+      prisma.productOutboxEvent.findUniqueOrThrow({ where: { id: eventId(1) } }),
+    ).resolves.toMatchObject({
+      status: ProductOutboxStatus.Published,
+      attemptCount: 1,
+      leaseOwner: null,
+      leaseUntil: null,
+      publishedAt: reclaimAt,
+    });
+  });
+
+  it('commits the claim transaction before waiting for Kafka publication', async () => {
+    await insertEvent({ id: eventId(1), nextAttemptAt: new Date(0) });
+    const publishStarted = deferred<void>();
+    const finishPublish = deferred<void>();
+    const worker = new ProductOutboxPublisherWorker(
+      repository,
+      {
+        publish: async () => {
+          publishStarted.resolve();
+          await finishPublish.promise;
+        },
+      },
+      workerConfig(),
+    );
+
+    worker.onApplicationBootstrap();
+    await publishStarted.promise;
+
+    try {
+      await expect(
+        competingPrisma.$transaction(
+          (transaction) =>
+            transaction.$queryRaw`
+            SELECT "id"
+            FROM "product_outbox_events"
+            WHERE "id" = ${eventId(1)}::uuid
+            FOR UPDATE NOWAIT
+          `,
+        ),
+      ).resolves.toHaveLength(1);
+    } finally {
+      finishPublish.resolve();
+      await worker.onModuleDestroy();
+    }
   });
 
   it('resets retry state while preserving a failed event envelope', async () => {
@@ -452,6 +576,28 @@ function recordingTransport(publishedIds: string[]): ProductEventTransportPort {
       publishedIds.push(event.eventId);
     },
   };
+}
+
+function toTransportEvent(event: ClaimedProductOutboxEvent) {
+  return {
+    eventId: event.id,
+    eventType: event.eventType,
+    schemaVersion: event.schemaVersion,
+    partitionKey: event.partitionKey,
+    occurredAt: event.occurredAt,
+    payload: event.payload,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
 }
 
 function workerConfig(): ConfigService {
