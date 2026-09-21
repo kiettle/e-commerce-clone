@@ -5,6 +5,16 @@ import { describe, expect, it } from 'vitest';
 describe('inventory protobuf contract', () => {
   const root = loadSync(join(process.cwd(), 'libs/proto/inventory.proto'));
 
+  it('keeps reserve, release, and commit RPCs on the inventory service', () => {
+    const service = root.lookupService('inventory.InventoryService');
+
+    expect(Object.keys(service.methods).sort()).toEqual([
+      'CommitStock',
+      'ReleaseStock',
+      'ReserveStock',
+    ]);
+  });
+
   it('preserves existing fields and appends operation identity', () => {
     const request = root.lookupType('inventory.StockOperationRequest');
 

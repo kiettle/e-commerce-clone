@@ -5,6 +5,13 @@ import { describe, expect, it } from 'vitest';
 describe('order protobuf contract', () => {
   const root = loadSync(join(process.cwd(), 'libs/proto/order.proto'));
 
+  it('keeps order creation and checkout lookup RPCs', () => {
+    const service = root.lookupService('order.OrderService');
+
+    expect(Object.keys(service.methods).sort()).toEqual(['CreateOrder', 'GetOrderByCheckoutId']);
+    expect(root.lookupType('order.GetOrderByCheckoutIdRequest').fields.checkoutId.id).toBe(1);
+  });
+
   it('preserves create request fields and appends the hash version', () => {
     const request = root.lookupType('order.CreateOrderRequest');
 
