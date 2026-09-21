@@ -21,6 +21,7 @@ import {
   StockOperation,
   StockOperationItem,
 } from '../../../domain/repositories/inventory.repository.port';
+import { validateFlashSaleReservation } from '../../../domain/services/validate-flash-sale-reservation';
 import { PrismaService } from './prisma.service';
 
 type TransactionClient = Prisma.TransactionClient;
@@ -149,7 +150,7 @@ export class PrismaInventoryRepository implements InventoryRepositoryPort {
 
           if (hasSaleContext(item)) {
             const saleStock = saleStockByItemId.get(item.flashSaleItemId.toString());
-            validateSaleReservation(operation, item, saleStock, claimedSaleItems, now);
+            validateFlashSaleReservation(operation, item, saleStock, claimedSaleItems, now);
           }
         }
 
@@ -552,45 +553,6 @@ function hasSaleContext(
   item: StockOperationItem,
 ): item is StockOperationItem & { flashSaleId: bigint; flashSaleItemId: bigint } {
   return item.flashSaleId != null && item.flashSaleItemId != null;
-}
-
-function validateSaleReservation(
-  operation: StockOperation,
-  item: StockOperationItem & { flashSaleId: bigint; flashSaleItemId: bigint },
-  saleStock: FlashSaleStock | undefined,
-  claimedSaleItems: StockReservation[],
-  now: Date,
-): void {
-  if (!saleStock) {
-    throw new FlashSaleReservationError('FLASH_SALE_NOT_READY');
-  }
-  if (saleStock.flashSaleId !== item.flashSaleId || saleStock.productSkuId !== item.productSkuId) {
-    throw new InvalidStockOperationError('Flash-sale item does not match the requested SKU.');
-  }
-  if (saleStock.startsAt > now) {
-    throw new FlashSaleReservationError('FLASH_SALE_NOT_ACTIVE');
-  }
-  if (saleStock.endsAt <= now) {
-    throw new FlashSaleReservationError('FLASH_SALE_ENDED');
-  }
-  if (item.quantity > saleStock.maxQuantityPerUser) {
-    throw new FlashSaleReservationError('FLASH_SALE_QUANTITY_EXCEEDED');
-  }
-  if (
-    claimedSaleItems.some(
-      (reservation) =>
-        reservation.flashSaleItemId === item.flashSaleItemId &&
-        reservation.cartId !== operation.cartId,
-    )
-  ) {
-    throw new FlashSaleReservationError('FLASH_SALE_LIMIT_REACHED');
-  }
-  if (
-    saleStock.reservedQuantity + saleStock.soldQuantity + item.quantity >
-    saleStock.stockLimit
-  ) {
-    throw new FlashSaleReservationError('FLASH_SALE_SOLD_OUT');
-  }
 }
 
 function assertReservationMatches(

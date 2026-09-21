@@ -74,6 +74,21 @@ describe('ProductOutboxPublisherWorker', () => {
     );
   });
 
+  it('does not let a stale lease owner mark an event published', async () => {
+    const event = claimedEvent();
+    vi.mocked(outbox.claimBatch).mockResolvedValueOnce([event]).mockResolvedValue([]);
+    vi.mocked(transport.publish).mockResolvedValue();
+    vi.mocked(outbox.markPublished).mockResolvedValue(false);
+
+    worker.onApplicationBootstrap();
+    await runScheduledWork();
+
+    expect(outbox.markPublished).toHaveBeenCalledWith(event.id, event.leaseOwner, expect.any(Date));
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      `Outbox event ${event.id} was published after its lease was lost.`,
+    );
+  });
+
   it('schedules a retry when Kafka publishing fails', async () => {
     const event = claimedEvent();
     vi.mocked(outbox.claimBatch).mockResolvedValueOnce([event]).mockResolvedValue([]);
@@ -96,6 +111,20 @@ describe('ProductOutboxPublisherWorker', () => {
     );
     expect(Logger.prototype.warn).not.toHaveBeenCalledWith(
       expect.stringContaining('Mechanical Keyboard'),
+    );
+  });
+
+  it('does not let a stale lease owner record a publishing failure', async () => {
+    const event = claimedEvent();
+    vi.mocked(outbox.claimBatch).mockResolvedValueOnce([event]).mockResolvedValue([]);
+    vi.mocked(transport.publish).mockRejectedValue(new Error('Kafka unavailable'));
+    vi.mocked(outbox.markFailedAttempt).mockResolvedValue(false);
+
+    worker.onApplicationBootstrap();
+    await runScheduledWork();
+
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      `Outbox event ${event.id} failure was ignored after its lease was lost.`,
     );
   });
 
@@ -162,6 +191,29 @@ describe('ProductOutboxPublisherWorker', () => {
     );
   });
 
+  it('continues the batch when one published row cannot update its state', async () => {
+    const first = claimedEvent({ id: 'event-1' });
+    const second = claimedEvent({ id: 'event-2', partitionKey: '21' });
+    vi.mocked(outbox.claimBatch).mockResolvedValueOnce([first, second]).mockResolvedValue([]);
+    vi.mocked(transport.publish).mockResolvedValue();
+    vi.mocked(outbox.markPublished)
+      .mockRejectedValueOnce(new Error('Database unavailable'))
+      .mockResolvedValueOnce(true);
+
+    worker.onApplicationBootstrap();
+    await runScheduledWork();
+
+    expect(transport.publish).toHaveBeenCalledTimes(2);
+    expect(outbox.markPublished).toHaveBeenCalledWith(
+      second.id,
+      second.leaseOwner,
+      expect.any(Date),
+    );
+    expect(Logger.prototype.error).toHaveBeenCalledWith(
+      `Outbox event ${first.id} could not update its state: Database unavailable`,
+    );
+  });
+
   it('marks invalid stored data as a terminal failure', async () => {
     const event = claimedEvent();
     vi.mocked(outbox.claimBatch).mockResolvedValueOnce([event]).mockResolvedValue([]);
@@ -199,6 +251,22 @@ describe('ProductOutboxPublisherWorker', () => {
     expect(outbox.claimBatch).toHaveBeenCalledTimes(2);
   });
 
+  it('logs a polling failure and schedules the next pass', async () => {
+    vi.mocked(outbox.claimBatch)
+      .mockRejectedValueOnce(new Error('Database unavailable'))
+      .mockResolvedValue([]);
+
+    worker.onApplicationBootstrap();
+    await runScheduledWork();
+
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      'Product outbox polling failed: Database unavailable',
+    );
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(outbox.claimBatch).toHaveBeenCalledTimes(2);
+  });
+
   it('stops future polling during shutdown', async () => {
     vi.mocked(outbox.claimBatch).mockResolvedValue([]);
     worker.onApplicationBootstrap();
@@ -212,7 +280,10 @@ describe('ProductOutboxPublisherWorker', () => {
 
   it('allows the active event operation to finish during shutdown', async () => {
     const publication = deferred<void>();
-    vi.mocked(outbox.claimBatch).mockResolvedValueOnce([claimedEvent()]);
+    vi.mocked(outbox.claimBatch).mockResolvedValueOnce([
+      claimedEvent({ id: 'event-1' }),
+      claimedEvent({ id: 'event-2' }),
+    ]);
     vi.mocked(transport.publish).mockReturnValueOnce(publication.promise);
     vi.mocked(outbox.markPublished).mockResolvedValue(true);
 
@@ -231,7 +302,25 @@ describe('ProductOutboxPublisherWorker', () => {
     await shutdown;
 
     expect(outbox.markPublished).toHaveBeenCalledTimes(1);
+    expect(transport.publish).toHaveBeenCalledTimes(1);
     expect(shutdownFinished).toBe(true);
+  });
+
+  it('uses bounded defaults when outbox configuration is absent', async () => {
+    vi.mocked(outbox.claimBatch).mockResolvedValue([]);
+    worker = new ProductOutboxPublisherWorker(outbox, transport, {
+      get: vi.fn().mockReturnValue(undefined),
+    } as unknown as ConfigService);
+
+    worker.onApplicationBootstrap();
+    await runScheduledWork();
+
+    expect(outbox.claimBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 20,
+        leaseUntil: new Date('2026-09-20T08:00:30.000Z'),
+      }),
+    );
   });
 
   it('does not publish an event before it is claimed', async () => {

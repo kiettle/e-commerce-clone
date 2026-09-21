@@ -50,6 +50,14 @@ describe('FlashSaleEntity', () => {
     );
   });
 
+  it('rejects an invalid clock value when calculating effective status', () => {
+    const flashSale = createScheduledSale();
+
+    expect(() => flashSale.getEffectiveStatus(clockAt('invalid'))).toThrow(
+      'Clock returned an invalid date.',
+    );
+  });
+
   it('rejects an invalid time window', () => {
     expect(() =>
       createFlashSale({
@@ -63,6 +71,24 @@ describe('FlashSaleEntity', () => {
     expect(() => createFlashSale({ items: [createItem(1n), createItem(1n)] })).toThrow(
       'A product SKU can appear only once in a flash sale.',
     );
+  });
+
+  it('rejects an effective status as a stored lifecycle status', () => {
+    expect(() => createFlashSale({ status: FlashSaleStatus.Active })).toThrow(
+      'ACTIVE is an effective status and cannot be stored.',
+    );
+  });
+
+  it('rejects a non-positive SKU ID', () => {
+    expect(() => createItem(0n)).toThrow(InvalidFlashSaleError);
+  });
+
+  it('rejects an invalid regular price', () => {
+    expect(() => createItem(1n, { originalPrice: Number.NaN })).toThrow(InvalidFlashSaleError);
+  });
+
+  it('rejects a non-integer stock limit', () => {
+    expect(() => createItem(1n, { stockLimit: 1.5 })).toThrow(InvalidFlashSaleError);
   });
 
   it('rejects a sale price equal to the regular price', () => {

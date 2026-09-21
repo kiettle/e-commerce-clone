@@ -60,6 +60,32 @@ describe('ReleaseStockUseCase', () => {
     });
   });
 
+  it('preserves sale context when releasing a reservation', async () => {
+    await useCase.execute({
+      ...operationIdentity,
+      items: [
+        {
+          productSkuId: 101n,
+          quantity: 1,
+          flashSaleId: 201n,
+          flashSaleItemId: 301n,
+        },
+      ],
+    });
+
+    expect(inventory.releaseStock).toHaveBeenCalledWith({
+      ...operationIdentity,
+      items: [
+        {
+          productSkuId: 101n,
+          quantity: 1,
+          flashSaleId: 201n,
+          flashSaleItemId: 301n,
+        },
+      ],
+    });
+  });
+
   it.each([0, -1])(
     'rejects a non-positive quantity of %s without calling the repository',
     async (quantity) => {

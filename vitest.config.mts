@@ -16,5 +16,23 @@ export default defineConfig({
     exclude: ['**/*.contract.spec.ts', '**/*.integration.spec.ts', '**/*.e2e.spec.ts'],
     testTimeout: 5_000,
     hookTimeout: 10_000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary', 'html'],
+      reportsDirectory: 'coverage/unit',
+      exclude: [
+        '**/*.spec.ts',
+        '**/*.contract.spec.ts',
+        '**/*.integration.spec.ts',
+        '**/*.e2e.spec.ts',
+        '**/prisma/generated/**',
+      ],
+      thresholds: {
+        statements: 70,
+        lines: 70,
+        functions: 70,
+        branches: 60,
+      },
+    },
   },
 });

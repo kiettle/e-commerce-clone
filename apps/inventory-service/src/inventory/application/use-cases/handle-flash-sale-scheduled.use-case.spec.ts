@@ -25,8 +25,14 @@ describe('HandleFlashSaleScheduledUseCase', () => {
   it.each([
     ['event id', { eventId: '' }],
     ['schema version', { schemaVersion: 2 }],
+    ['sale ID', { flashSaleId: 0n }],
+    ['invalid start date', { startsAt: new Date(Number.NaN) }],
     ['time window', { endsAt: new Date('2026-10-01T07:00:00.000Z') }],
+    ['empty item list', { items: [] }],
+    ['non-positive item ID', { items: [{ ...command().items[0], flashSaleItemId: 0n }] }],
     ['positive limit', { items: [{ ...command().items[0], stockLimit: 0 }] }],
+    ['integer limit', { items: [{ ...command().items[0], stockLimit: 1.5 }] }],
+    ['one-unit per-user limit', { items: [{ ...command().items[0], maxQuantityPerUser: 2 }] }],
     [
       'duplicate sale-item IDs',
       { items: [command().items[0], { ...command().items[0], productSkuId: 1002n }] },

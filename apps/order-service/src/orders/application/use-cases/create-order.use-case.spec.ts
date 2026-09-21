@@ -81,6 +81,13 @@ describe('CreateOrderUseCase', () => {
         items: [{ ...validItem, quantity: 1.5 }],
       },
     ],
+    [
+      'a blank product name',
+      {
+        userId: 7n,
+        items: [{ ...validItem, productName: '   ' }],
+      },
+    ],
   ];
 
   it.each(invalidCommands)(
@@ -338,6 +345,42 @@ describe('CreateOrderUseCase', () => {
         ],
       }),
     );
+  });
+
+  it.each([
+    ['a missing regular price', { ...validItem, regularPrice: undefined, priceSource: 'REGULAR' }],
+    ['an invalid price source', { ...validItem, regularPrice: 19.99, priceSource: 'CLIENT' }],
+    [
+      'incomplete flash-sale context',
+      {
+        ...validItem,
+        regularPrice: 39.9,
+        priceSource: 'FLASH_SALE',
+        flashSaleId: 10n,
+        flashSaleItemId: null,
+        saleEndsAt: '2026-09-20T04:00:00.000Z',
+      },
+    ],
+    [
+      'sale context on a regular item',
+      {
+        ...validItem,
+        regularPrice: 19.99,
+        priceSource: 'REGULAR',
+        flashSaleId: 10n,
+        flashSaleItemId: 501n,
+      },
+    ],
+  ])('rejects version 2 order items with %s', async (_description, item) => {
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        requestHashVersion: 2,
+        items: [item as CreateOrderItemCommand],
+      }),
+    ).rejects.toBeInstanceOf(InvalidOrderError);
+    expect(orders.create).not.toHaveBeenCalled();
   });
 
   it('rejects altered sale context for the same version 2 request hash', async () => {

@@ -65,6 +65,31 @@ describe('AddCartItemUseCase sale pricing', () => {
     );
   });
 
+  it('ignores client-supplied pricing fields and stores the catalog snapshot', async () => {
+    await useCase.execute({
+      userId: 10n,
+      productSkuId: 100n,
+      quantity: 1,
+      price: 0.01,
+      regularPrice: 0.01,
+      priceSource: CartItemPriceSource.Regular,
+      flashSaleId: 999n,
+      flashSaleItemId: 999n,
+    } as Parameters<AddCartItemUseCase['execute']>[0]);
+
+    expect(carts.addOrIncrementItem).toHaveBeenCalledWith(
+      20n,
+      expect.objectContaining({
+        price: 75,
+        regularPrice: 100,
+        priceSource: CartItemPriceSource.FlashSale,
+        flashSaleId: 50n,
+        flashSaleItemId: 501n,
+      }),
+      1,
+    );
+  });
+
   it('rejects an initial sale quantity above the product-owned limit', async () => {
     await expect(
       useCase.execute({ userId: 10n, productSkuId: 100n, quantity: 2 }),

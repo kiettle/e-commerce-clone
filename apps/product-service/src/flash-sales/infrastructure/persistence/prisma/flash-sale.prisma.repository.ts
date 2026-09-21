@@ -9,9 +9,7 @@ import { FlashSaleStatus } from '../../../domain/enums/flash-sale-status.enum';
 import { FlashSaleNotDraftError } from '../../../domain/errors/flash-sale-not-draft.error';
 import { FlashSaleNotFoundError } from '../../../domain/errors/flash-sale-not-found.error';
 import { FlashSaleOverlapError } from '../../../domain/errors/flash-sale-overlap.error';
-import { FlashSalePriceChangedError } from '../../../domain/errors/flash-sale-price-changed.error';
 import { FlashSaleProductInactiveError } from '../../../domain/errors/flash-sale-product-inactive.error';
-import { FlashSaleScheduleTimeError } from '../../../domain/errors/flash-sale-schedule-time.error';
 import { FlashSaleSkuInactiveError } from '../../../domain/errors/flash-sale-sku-inactive.error';
 import { InvalidFlashSaleError } from '../../../domain/errors/invalid-flash-sale.error';
 import {
@@ -19,6 +17,10 @@ import {
   FlashSaleSkuReference,
   ScheduleFlashSaleRequest,
 } from '../../../domain/repositories/flash-sale.repository.port';
+import {
+  assertFlashSalePriceUnchanged,
+  validateFlashSaleScheduleTime,
+} from '../../../domain/services/flash-sale-scheduling-policy';
 
 type PrismaFlashSaleWithItems = Prisma.FlashSaleGetPayload<{
   include: {
@@ -183,8 +185,6 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
   }
 
   async scheduleDraft(request: ScheduleFlashSaleRequest): Promise<FlashSaleEntity> {
-    assertValidDate(request.occurredAt);
-
     const scheduled = await this.prisma.$transaction(async (transaction) => {
       const [sale] = await transaction.$queryRaw<LockedFlashSaleRow[]>(Prisma.sql`
         SELECT "id", "starts_at", "ends_at", "status"::text
@@ -198,7 +198,7 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
       if (sale.status !== FlashSaleStatus.Draft) {
         throw new FlashSaleNotDraftError();
       }
-      validateScheduleTime(sale.starts_at, sale.ends_at, request.occurredAt);
+      validateFlashSaleScheduleTime(sale.starts_at, sale.ends_at, request.occurredAt);
 
       const items = await transaction.$queryRaw<ScheduledItemRow[]>(Prisma.sql`
         SELECT "id", "product_sku_id", "regular_price", "sale_price",
@@ -242,9 +242,7 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
         if (sku.sku_status !== ProductSkuStatus.Available) {
           throw new FlashSaleSkuInactiveError(sku.id);
         }
-        if (!sku.price.equals(item.regular_price)) {
-          throw new FlashSalePriceChangedError(sku.id);
-        }
+        assertFlashSalePriceUnchanged(sku.id, Number(sku.price), Number(item.regular_price));
       }
 
       const overlapping = await transaction.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
@@ -339,26 +337,6 @@ export class PrismaFlashSaleRepository implements FlashSaleRepositoryPort {
       createdAt: flashSale.createdAt,
       updatedAt: flashSale.updatedAt,
     });
-  }
-}
-
-function assertValidDate(value: Date): void {
-  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
-    throw new FlashSaleScheduleTimeError('Scheduling time must be valid.');
-  }
-}
-
-function validateScheduleTime(startsAt: Date, endsAt: Date, now: Date): void {
-  const leadTime = startsAt.getTime() - now.getTime();
-  const duration = endsAt.getTime() - startsAt.getTime();
-  if (leadTime < 5 * 60 * 1000) {
-    throw new FlashSaleScheduleTimeError('Flash sale must start at least five minutes from now.');
-  }
-  if (duration <= 0) {
-    throw new FlashSaleScheduleTimeError('Flash sale duration must be positive.');
-  }
-  if (duration > 24 * 60 * 60 * 1000) {
-    throw new FlashSaleScheduleTimeError('Flash sale duration cannot exceed 24 hours.');
   }
 }
 

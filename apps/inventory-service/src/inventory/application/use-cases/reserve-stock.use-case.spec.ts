@@ -125,4 +125,41 @@ describe('ReserveStockUseCase', () => {
       expect(inventory.reserveStock).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    ['a non-positive cart ID', { ...operationIdentity, cartId: 0n }, { productSkuId: 101n }],
+    ['a non-positive SKU ID', operationIdentity, { productSkuId: 0n }],
+    ['a non-integer quantity', operationIdentity, { productSkuId: 101n, quantity: 1.5 }],
+    [
+      'non-positive sale IDs',
+      operationIdentity,
+      { productSkuId: 101n, flashSaleId: 0n, flashSaleItemId: 301n },
+    ],
+  ])('rejects %s before calling the repository', async (_name, identity, item) => {
+    await expect(
+      useCase.execute({
+        ...identity,
+        items: [{ quantity: 1, ...item }],
+      }),
+    ).rejects.toBeInstanceOf(InvalidStockOperationError);
+    expect(inventory.reserveStock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate SKUs with conflicting sale context', async () => {
+    await expect(
+      useCase.execute({
+        ...operationIdentity,
+        items: [
+          { productSkuId: 101n, quantity: 1 },
+          {
+            productSkuId: 101n,
+            quantity: 1,
+            flashSaleId: 201n,
+            flashSaleItemId: 301n,
+          },
+        ],
+      }),
+    ).rejects.toThrow('Duplicate SKU items must use the same sale context.');
+    expect(inventory.reserveStock).not.toHaveBeenCalled();
+  });
 });

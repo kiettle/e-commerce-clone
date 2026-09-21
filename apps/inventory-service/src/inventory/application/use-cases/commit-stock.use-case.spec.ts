@@ -59,6 +59,32 @@ describe('CommitStockUseCase', () => {
     });
   });
 
+  it('preserves sale context when committing a reservation', async () => {
+    await useCase.execute({
+      ...operationIdentity,
+      items: [
+        {
+          productSkuId: 101n,
+          quantity: 1,
+          flashSaleId: 201n,
+          flashSaleItemId: 301n,
+        },
+      ],
+    });
+
+    expect(inventory.commitStock).toHaveBeenCalledWith({
+      ...operationIdentity,
+      items: [
+        {
+          productSkuId: 101n,
+          quantity: 1,
+          flashSaleId: 201n,
+          flashSaleItemId: 301n,
+        },
+      ],
+    });
+  });
+
   it.each([0, -1])('rejects a non-positive quantity of %s', async (quantity) => {
     await expect(
       useCase.execute({

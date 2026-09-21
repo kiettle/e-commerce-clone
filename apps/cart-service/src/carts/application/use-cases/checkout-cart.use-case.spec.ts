@@ -9,6 +9,7 @@ import { CheckoutTerminalError } from '../../domain/errors/checkout-terminal.err
 import { InventoryCommitFailedError } from '../../domain/errors/inventory-commit-failed.error';
 import { InventoryReleaseFailedError } from '../../domain/errors/inventory-release-failed.error';
 import { InventoryReservationFailedError } from '../../domain/errors/inventory-reservation-failed.error';
+import { InvalidCartOperationError } from '../../domain/errors/invalid-cart-operation.error';
 import { OrderCreationFailedError } from '../../domain/errors/order-creation-failed.error';
 import { CartRepositoryPort } from '../../domain/repositories/cart.repository.port';
 import { CheckoutAttemptRepositoryPort } from '../../domain/repositories/checkout-attempt.repository.port';
@@ -188,6 +189,47 @@ describe('CheckoutCartUseCase', () => {
     expect(inventory.reserveStock).not.toHaveBeenCalled();
   });
 
+  it('rejects a malformed idempotency key before loading checkout state', async () => {
+    await expect(
+      useCase.execute({ ...command, idempotencyKey: 'not-a-uuid' }),
+    ).rejects.toBeInstanceOf(InvalidCartOperationError);
+    expect(attempts.findByUserAndKey).not.toHaveBeenCalled();
+    expect(attempts.startOrLoad).not.toHaveBeenCalled();
+    expect(inventory.reserveStock).not.toHaveBeenCalled();
+  });
+
+  it('returns the stored terminal failure without repeating side effects', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.Failed,
+        reconciliationAction: null,
+        lastError: 'FLASH_SALE_ENDED',
+      }),
+    );
+
+    await expect(useCase.execute(command)).rejects.toMatchObject({
+      code: 'FLASH_SALE_ENDED',
+    });
+    expect(inventory.reserveStock).not.toHaveBeenCalled();
+    expect(inventory.releaseStock).not.toHaveBeenCalled();
+    expect(orders.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-terminal attempt that has no recovery action', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.ReconciliationRequired,
+        reconciliationAction: null,
+      }),
+    );
+
+    await expect(useCase.execute(command)).rejects.toThrow(
+      'Checkout attempt has no recovery action.',
+    );
+    expect(inventory.reserveStock).not.toHaveBeenCalled();
+    expect(orders.createOrder).not.toHaveBeenCalled();
+  });
+
   it('does not create an order after a definite inventory rejection', async () => {
     attempts.findByUserAndKey.mockResolvedValue(attempt());
     inventory.reserveStock.mockRejectedValue(
@@ -361,6 +403,24 @@ describe('CheckoutCartUseCase', () => {
     expect(orders.createOrder).not.toHaveBeenCalled();
   });
 
+  it('uses the state returned by stock reservation when another retry advanced it', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(attempt());
+    attempts.markStockReserved.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.Completed,
+        orderId: 501n,
+        reconciliationAction: null,
+      }),
+    );
+    carts.findById.mockResolvedValue(checkedOutCart);
+
+    await expect(useCase.execute(command)).resolves.toMatchObject({
+      outcome: 'COMPLETED',
+      orderId: 501n,
+    });
+    expect(orders.createOrder).not.toHaveBeenCalled();
+  });
+
   it('does not release stock when the order outcome is uncertain', async () => {
     attempts.findByUserAndKey.mockResolvedValue(checkOrderAttempt());
     orders.getOrderByCheckoutId.mockRejectedValue(
@@ -379,6 +439,44 @@ describe('CheckoutCartUseCase', () => {
       ReconciliationAction.CheckOrder,
       'Order timed out.',
     );
+    expect(inventory.releaseStock).not.toHaveBeenCalled();
+  });
+
+  it('starts compensation when order lookup returns a definite rejection', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(checkOrderAttempt());
+    orders.getOrderByCheckoutId.mockRejectedValue(
+      new OrderCreationFailedError('Order request is invalid.', 'DEFINITE'),
+    );
+    attempts.markCompensating.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.Compensating,
+        reconciliationAction: ReconciliationAction.ReleaseStock,
+        lastError: 'Order request is invalid.',
+      }),
+    );
+
+    await expect(useCase.execute(command)).rejects.toBeInstanceOf(CheckoutTerminalError);
+    expect(attempts.markCompensating).toHaveBeenCalledWith(checkoutId, 'Order request is invalid.');
+    expect(inventory.releaseStock).toHaveBeenCalledOnce();
+    expect(orders.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('persists CHECK_ORDER when order lookup has an uncertain outcome', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(checkOrderAttempt());
+    orders.getOrderByCheckoutId.mockRejectedValue(
+      new OrderCreationFailedError('Order service unavailable.', 'UNCERTAIN'),
+    );
+
+    await expect(useCase.execute(command)).resolves.toMatchObject({
+      outcome: 'PENDING',
+      checkoutId,
+    });
+    expect(attempts.markReconciliationRequired).toHaveBeenCalledWith(
+      checkoutId,
+      ReconciliationAction.CheckOrder,
+      'Order service unavailable.',
+    );
+    expect(orders.createOrder).not.toHaveBeenCalled();
     expect(inventory.releaseStock).not.toHaveBeenCalled();
   });
 
@@ -433,6 +531,27 @@ describe('CheckoutCartUseCase', () => {
     expect(orders.createOrder).not.toHaveBeenCalled();
     expect(orders.getOrderByCheckoutId).not.toHaveBeenCalled();
     expect(inventory.releaseStock).not.toHaveBeenCalled();
+  });
+
+  it('keeps COMMIT_STOCK when the stored attempt is missing its order ID', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.ReconciliationRequired,
+        orderId: null,
+        reconciliationAction: ReconciliationAction.CommitStock,
+      }),
+    );
+
+    await expect(useCase.execute(command)).resolves.toMatchObject({
+      outcome: 'PENDING',
+      checkoutId,
+    });
+    expect(attempts.markReconciliationRequired).toHaveBeenCalledWith(
+      checkoutId,
+      ReconciliationAction.CommitStock,
+      'Checkout attempt is missing its order ID.',
+    );
+    expect(inventory.commitStock).not.toHaveBeenCalled();
   });
 
   it('resumes after a lost response by finding and completing the existing order', async () => {
@@ -511,6 +630,59 @@ describe('CheckoutCartUseCase', () => {
       'Database unavailable.',
     );
     expect(inventory.releaseStock).not.toHaveBeenCalled();
+  });
+
+  it('keeps COMPLETE_CART when the stored attempt is missing its order ID', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.ReconciliationRequired,
+        orderId: null,
+        reconciliationAction: ReconciliationAction.CompleteCart,
+      }),
+    );
+
+    await expect(useCase.execute(command)).resolves.toMatchObject({
+      outcome: 'PENDING',
+      checkoutId,
+    });
+    expect(attempts.markReconciliationRequired).toHaveBeenCalledWith(
+      checkoutId,
+      ReconciliationAction.CompleteCart,
+      'Checkout attempt is missing its order ID.',
+    );
+    expect(attempts.complete).not.toHaveBeenCalled();
+  });
+
+  it('rejects a corrupt completed attempt without an order ID', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.Completed,
+        orderId: null,
+        reconciliationAction: null,
+      }),
+    );
+
+    await expect(useCase.execute(command)).rejects.toThrow(
+      'Completed checkout is missing its order ID.',
+    );
+    expect(carts.findById).not.toHaveBeenCalled();
+  });
+
+  it('rejects a completed retry when its cart no longer exists', async () => {
+    attempts.findByUserAndKey.mockResolvedValue(
+      attempt({
+        status: CheckoutStatus.Completed,
+        orderId: 501n,
+        reconciliationAction: null,
+      }),
+    );
+    carts.findById.mockResolvedValue(null);
+
+    await expect(useCase.execute(command)).rejects.toThrow(
+      'Completed checkout cart was not found.',
+    );
+    expect(inventory.reserveStock).not.toHaveBeenCalled();
+    expect(orders.createOrder).not.toHaveBeenCalled();
   });
 
   it('releases stock exactly once after a definite order rejection', async () => {
