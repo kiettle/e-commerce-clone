@@ -237,6 +237,111 @@ describe('CheckoutCartUseCase', () => {
     });
   });
 
+  it.each([
+    'FLASH_SALE_NOT_READY',
+    'FLASH_SALE_NOT_ACTIVE',
+    'FLASH_SALE_ENDED',
+    'FLASH_SALE_SOLD_OUT',
+    'FLASH_SALE_LIMIT_REACHED',
+  ] as const)('fails checkout with the authoritative inventory result %s', async (code) => {
+    attempts.findByUserAndKey.mockResolvedValue(attempt());
+    inventory.reserveStock.mockRejectedValue(
+      new InventoryReservationFailedError('Sale reservation rejected.', 'DEFINITE', code),
+    );
+
+    await expect(useCase.execute(command)).rejects.toMatchObject({
+      code,
+      message: 'Sale reservation rejected.',
+    });
+    expect(attempts.failAndAbandon).toHaveBeenCalledWith(checkoutId, code);
+    expect(orders.createOrder).not.toHaveBeenCalled();
+    expect(inventory.releaseStock).not.toHaveBeenCalled();
+  });
+
+  it('reserves and commits mixed regular and sale items from the stored snapshot', async () => {
+    const itemsSnapshot = [
+      {
+        productSkuId: '100',
+        productName: 'Regular item',
+        skuCode: 'REGULAR-100',
+        imageUrl: null,
+        price: '20.00',
+        quantity: 2,
+        priceSource: 'REGULAR',
+        regularPrice: '20.00',
+        flashSaleId: null,
+        flashSaleItemId: null,
+        saleEndsAt: null,
+      },
+      {
+        productSkuId: '200',
+        productName: 'Sale item',
+        skuCode: 'SALE-200',
+        imageUrl: null,
+        price: '10.00',
+        quantity: 1,
+        priceSource: 'FLASH_SALE',
+        regularPrice: '25.00',
+        flashSaleId: '50',
+        flashSaleItemId: '501',
+        saleEndsAt: '2026-09-30T00:00:00.000Z',
+      },
+    ];
+    const started = attempt({ requestHashVersion: 2, itemsSnapshot });
+    const reserved = attempt({
+      requestHashVersion: 2,
+      itemsSnapshot,
+      status: CheckoutStatus.StockReserved,
+      reconciliationAction: ReconciliationAction.CheckOrder,
+    });
+    const confirmed = attempt({
+      requestHashVersion: 2,
+      itemsSnapshot,
+      status: CheckoutStatus.OrderConfirmed,
+      orderId: 501n,
+      reconciliationAction: ReconciliationAction.CommitStock,
+    });
+    const committed = attempt({
+      requestHashVersion: 2,
+      itemsSnapshot,
+      status: CheckoutStatus.StockCommitted,
+      orderId: 501n,
+      reconciliationAction: ReconciliationAction.CompleteCart,
+    });
+    attempts.findByUserAndKey.mockResolvedValue(started);
+    attempts.markStockReserved.mockResolvedValue(reserved);
+    orders.createOrder.mockResolvedValue({ orderId: 501n, status: 'CREATED' });
+    attempts.markOrderConfirmed.mockResolvedValue(confirmed);
+    attempts.markStockCommitted.mockResolvedValue(committed);
+    attempts.complete.mockResolvedValue(checkedOutCart);
+
+    await expect(useCase.execute(command)).resolves.toMatchObject({
+      outcome: 'COMPLETED',
+      orderId: 501n,
+    });
+    const expectedOperation = {
+      cartId: 20n,
+      checkoutId,
+      userId: 10n,
+      items: [
+        {
+          productSkuId: 100n,
+          quantity: 2,
+          flashSaleId: null,
+          flashSaleItemId: null,
+        },
+        {
+          productSkuId: 200n,
+          quantity: 1,
+          flashSaleId: 50n,
+          flashSaleItemId: 501n,
+        },
+      ],
+    };
+    expect(inventory.reserveStock).toHaveBeenCalledWith(expectedOperation);
+    expect(inventory.commitStock).toHaveBeenCalledWith(expectedOperation);
+  });
+
   it('stores RESERVE_STOCK when the inventory outcome is uncertain', async () => {
     attempts.findByUserAndKey.mockResolvedValue(attempt());
     inventory.reserveStock.mockRejectedValue(

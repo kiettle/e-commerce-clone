@@ -24,4 +24,12 @@ describe('inventory protobuf contract', () => {
     expect(item.fields.flashSaleId.optional).toBe(true);
     expect(item.fields.flashSaleItemId.optional).toBe(true);
   });
+
+  it('appends a structured inventory failure code', () => {
+    const response = root.lookupType('inventory.StockOperationResponse');
+
+    expect(response.fields.success.id).toBe(1);
+    expect(response.fields.message.id).toBe(2);
+    expect(response.fields.errorCode.id).toBe(3);
+  });
 });

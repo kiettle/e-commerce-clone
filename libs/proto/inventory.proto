@@ -28,4 +28,5 @@ message StockItem {
 message StockOperationResponse {
   bool success = 1;
   string message = 2;
+  string error_code = 3;
 }

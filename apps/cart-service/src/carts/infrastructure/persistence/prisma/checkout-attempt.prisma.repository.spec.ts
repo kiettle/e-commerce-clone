@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { CheckoutStatus } from '../../../domain/enums/checkout-status.enum';
 import { ReconciliationAction } from '../../../domain/enums/reconciliation-action.enum';
 import { CheckoutConflictError } from '../../../domain/errors/checkout-conflict.error';
-import { InvalidCartOperationError } from '../../../domain/errors/invalid-cart-operation.error';
 import { PrismaCheckoutAttemptRepository } from './checkout-attempt.prisma.repository';
 import { PrismaService } from './prisma.service';
 
@@ -53,12 +52,9 @@ describe('PrismaCheckoutAttemptRepository startOrLoad', () => {
     });
   });
 
-  it('rejects an expired stored sale before creating a checkout attempt', async () => {
+  it('persists an expired sale snapshot for authoritative inventory validation', async () => {
     const transaction = {
-      $queryRaw: vi
-        .fn()
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ now: new Date('2026-10-01T10:00:00.000Z') }]),
+      $queryRaw: vi.fn().mockResolvedValue([]),
       cart: {
         findUnique: vi.fn().mockResolvedValue({
           id: 20n,
@@ -67,7 +63,15 @@ describe('PrismaCheckoutAttemptRepository startOrLoad', () => {
           items: [
             {
               productSkuId: 100n,
+              productName: 'Sale item',
+              skuCode: 'SALE-100',
+              imageUrl: null,
+              price: 10,
+              regularPrice: 20,
+              quantity: 1,
               priceSource: 'FLASH_SALE',
+              flashSaleId: 50n,
+              flashSaleItemId: 501n,
               saleEndsAt: new Date('2026-10-01T10:00:00.000Z'),
             },
           ],
@@ -75,7 +79,7 @@ describe('PrismaCheckoutAttemptRepository startOrLoad', () => {
       },
       checkoutAttempt: {
         findUnique: vi.fn().mockResolvedValue(null),
-        create: vi.fn(),
+        create: vi.fn().mockResolvedValue(databaseAttempt({ requestHashVersion: 2 })),
       },
     };
     const prisma = {
@@ -85,20 +89,15 @@ describe('PrismaCheckoutAttemptRepository startOrLoad', () => {
     };
     const repository = new PrismaCheckoutAttemptRepository(prisma as unknown as PrismaService);
 
-    await expect(repository.startOrLoad(10n, 20n, idempotencyKey)).rejects.toBeInstanceOf(
-      InvalidCartOperationError,
-    );
-    expect(transaction.checkoutAttempt.create).not.toHaveBeenCalled();
+    await expect(repository.startOrLoad(10n, 20n, idempotencyKey)).resolves.toBeDefined();
+    expect(transaction.checkoutAttempt.create).toHaveBeenCalledOnce();
   });
 
   it('persists new attempts with hash version 2 and the complete sale snapshot', async () => {
     const saleEndsAt = new Date('2026-10-01T11:00:00.000Z');
     const created = databaseAttempt({ requestHashVersion: 2 });
     const transaction = {
-      $queryRaw: vi
-        .fn()
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ now: new Date('2026-10-01T10:00:00.000Z') }]),
+      $queryRaw: vi.fn().mockResolvedValue([]),
       cart: {
         findUnique: vi.fn().mockResolvedValue({
           id: 20n,

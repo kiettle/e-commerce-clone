@@ -4,7 +4,10 @@ import { ReconciliationAction } from '../../domain/enums/reconciliation-action.e
 import { CheckoutConflictError } from '../../domain/errors/checkout-conflict.error';
 import { CheckoutTerminalError } from '../../domain/errors/checkout-terminal.error';
 import { InventoryReleaseFailedError } from '../../domain/errors/inventory-release-failed.error';
-import { InventoryReservationFailedError } from '../../domain/errors/inventory-reservation-failed.error';
+import {
+  InventoryReservationFailedError,
+  isInventoryReservationFailureCode,
+} from '../../domain/errors/inventory-reservation-failed.error';
 import { InvalidCartOperationError } from '../../domain/errors/invalid-cart-operation.error';
 import { OrderCreationFailedError } from '../../domain/errors/order-creation-failed.error';
 import { CartRepositoryPort } from '../../domain/repositories/cart.repository.port';
@@ -55,7 +58,11 @@ export class CheckoutCartUseCase {
     }
 
     if (attempt.status === CheckoutStatus.Failed) {
-      throw new CheckoutTerminalError(attempt.lastError ?? 'Checkout failed.');
+      const message = attempt.lastError ?? 'Checkout failed.';
+      throw new CheckoutTerminalError(
+        message,
+        isInventoryReservationFailureCode(message) ? message : undefined,
+      );
     }
 
     switch (attempt.reconciliationAction) {
@@ -79,8 +86,8 @@ export class CheckoutCartUseCase {
       await this.inventory.reserveStock(toStockOperation(attempt));
     } catch (error) {
       if (error instanceof InventoryReservationFailedError && error.outcome === 'DEFINITE') {
-        await this.attempts.failAndAbandon(attempt.id, error.message);
-        throw new CheckoutTerminalError(error.message);
+        await this.attempts.failAndAbandon(attempt.id, error.code ?? error.message);
+        throw new CheckoutTerminalError(error.message, error.code);
       }
 
       await this.attempts.markReconciliationRequired(

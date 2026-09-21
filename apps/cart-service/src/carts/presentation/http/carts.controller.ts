@@ -105,6 +105,9 @@ export function mapCartError(error: unknown): Error {
   }
 
   if (error instanceof CheckoutTerminalError) {
+    if (error.code) {
+      return new BadRequestException({ code: error.code, message: error.message });
+    }
     return new BadRequestException(error.message);
   }
 

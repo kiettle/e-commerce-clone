@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toGrpcRequest } from './inventory-grpc-stock.client';
+import { toGrpcRequest, toInventoryReservationError } from './inventory-grpc-stock.client';
 
 describe('inventory gRPC request mapping', () => {
   const identity = {
@@ -48,5 +48,21 @@ describe('inventory gRPC request mapping', () => {
         },
       ],
     });
+  });
+
+  it.each([
+    'FLASH_SALE_NOT_READY',
+    'FLASH_SALE_NOT_ACTIVE',
+    'FLASH_SALE_ENDED',
+    'FLASH_SALE_SOLD_OUT',
+    'FLASH_SALE_LIMIT_REACHED',
+  ] as const)('preserves the definite inventory failure code %s', (code) => {
+    expect(
+      toInventoryReservationError({
+        success: false,
+        message: 'Sale reservation rejected.',
+        error_code: code,
+      }),
+    ).toMatchObject({ outcome: 'DEFINITE', code });
   });
 });

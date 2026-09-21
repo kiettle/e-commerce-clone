@@ -1,6 +1,7 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { CartItemPricingChangedError } from '../../domain/errors/cart-item-pricing-changed.error';
+import { CheckoutTerminalError } from '../../domain/errors/checkout-terminal.error';
 import { mapCartError } from './carts.controller';
 
 describe('mapCartError', () => {
@@ -11,6 +12,18 @@ describe('mapCartError', () => {
     expect((mapped as ConflictException).getResponse()).toEqual({
       code: 'CART_ITEM_PRICING_CHANGED',
       message: 'The pricing context changed. Remove this item and add it again.',
+    });
+  });
+
+  it('returns the sale reservation failure code', () => {
+    const mapped = mapCartError(
+      new CheckoutTerminalError('Flash sale has ended.', 'FLASH_SALE_ENDED'),
+    );
+
+    expect(mapped).toBeInstanceOf(BadRequestException);
+    expect((mapped as BadRequestException).getResponse()).toEqual({
+      code: 'FLASH_SALE_ENDED',
+      message: 'Flash sale has ended.',
     });
   });
 });

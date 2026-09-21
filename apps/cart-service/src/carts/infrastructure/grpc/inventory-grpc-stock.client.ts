@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { Observable, firstValueFrom } from 'rxjs';
 import { InventoryCommitFailedError } from '../../domain/errors/inventory-commit-failed.error';
 import { InventoryReleaseFailedError } from '../../domain/errors/inventory-release-failed.error';
-import { InventoryReservationFailedError } from '../../domain/errors/inventory-reservation-failed.error';
+import {
+  InventoryReservationFailedError,
+  isInventoryReservationFailureCode,
+} from '../../domain/errors/inventory-reservation-failed.error';
 import {
   InventoryStockPort,
   StockOperationRequest,
@@ -30,6 +33,7 @@ export interface StockOperationGrpcRequest {
 interface StockOperationGrpcResponse {
   success: boolean;
   message?: string;
+  error_code?: string;
 }
 
 interface InventoryGrpcService {
@@ -61,9 +65,7 @@ export class InventoryGrpcStockClient implements InventoryStockPort, OnModuleIni
       );
 
       if (!response.success) {
-        throw new InventoryReservationFailedError(
-          response.message ?? 'Inventory reservation failed.',
-        );
+        throw toInventoryReservationError(response);
       }
     } catch (error) {
       if (error instanceof InventoryReservationFailedError) {
@@ -135,6 +137,18 @@ export class InventoryGrpcStockClient implements InventoryStockPort, OnModuleIni
 
     return this.inventoryService;
   }
+}
+
+export function toInventoryReservationError(
+  response: StockOperationGrpcResponse,
+): InventoryReservationFailedError {
+  return new InventoryReservationFailedError(
+    response.message ?? 'Inventory reservation failed.',
+    'DEFINITE',
+    isInventoryReservationFailureCode(response.error_code)
+      ? response.error_code
+      : undefined,
+  );
 }
 
 export function toGrpcRequest(request: StockOperationRequest): StockOperationGrpcRequest {

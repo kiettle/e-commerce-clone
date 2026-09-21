@@ -20,6 +20,7 @@ export interface StockOperationGrpcRequest {
 interface StockOperationGrpcResponse {
   success: boolean;
   message: string;
+  error_code: string;
 }
 
 @Controller()
@@ -56,12 +57,14 @@ export class InventoryGrpcController {
       return {
         success: true,
         message: 'OK',
+        error_code: '',
       };
     } catch (error) {
       if (error instanceof InventoryOperationError) {
         return {
           success: false,
           message: error.message,
+          error_code: error.code,
         };
       }
 

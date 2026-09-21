@@ -4,6 +4,7 @@ import { PrismaClient } from '../../../../../../../prisma/generated/inventory';
 import { HandleProductCreatedCommand } from '../../../application/dto/handle-product-created.command';
 import { calculateProductCreatedPayloadHash } from '../../../application/services/product-created-payload-hash';
 import { ConflictingProductEventError } from '../../../domain/errors/conflicting-product-event.error';
+import { FlashSaleReservationError } from '../../../domain/errors/flash-sale-reservation.error';
 import { InvalidStockOperationError } from '../../../domain/errors/invalid-stock-operation.error';
 import { ProductCreatedStockEvent } from '../../../domain/repositories/inventory.repository.port';
 import { PrismaInventoryRepository } from './inventory.prisma.repository';
@@ -196,6 +197,54 @@ describeWithDatabase('PrismaInventoryRepository product event idempotency', () =
     await expectCounters(prisma, { available: 5, normalReserved: 0, saleReserved: 0, sold: 0 });
   });
 
+  it('reserves and commits regular and sale items in one operation', async () => {
+    await seedSale(prisma, { normalQuantity: 5, saleLimit: 5 });
+    await prisma.inventoryStock.create({
+      data: {
+        productId: 100n,
+        productSkuId: 1002n,
+        skuCode: 'MOUSE-BLACK',
+        status: 'ACTIVE',
+        availableQuantity: 3,
+      },
+    });
+    const operation = {
+      ...saleOperation(1),
+      items: [
+        saleItem(),
+        {
+          productSkuId: 1002n,
+          quantity: 2,
+          flashSaleId: null,
+          flashSaleItemId: null,
+        },
+      ],
+    };
+
+    await repository.reserveStock(operation);
+    expect(await prisma.stockReservation.count()).toBe(2);
+    expect(
+      await prisma.inventoryStock.findUniqueOrThrow({ where: { productSkuId: 1002n } }),
+    ).toMatchObject({ availableQuantity: 1, reservedQuantity: 2 });
+    await expectCounters(prisma, {
+      available: 4,
+      normalReserved: 1,
+      saleReserved: 1,
+      sold: 0,
+    });
+
+    await repository.commitStock(operation);
+    expect(
+      await prisma.inventoryStock.findUniqueOrThrow({ where: { productSkuId: 1002n } }),
+    ).toMatchObject({ availableQuantity: 1, reservedQuantity: 0 });
+    await expectCounters(prisma, {
+      available: 4,
+      normalReserved: 0,
+      saleReserved: 0,
+      sold: 1,
+    });
+  });
+
   it('keeps counters consistent during concurrent reserve replay and release', async () => {
     await seedSale(prisma, { normalQuantity: 5, saleLimit: 5 });
     const operation = saleOperation(1);
@@ -227,24 +276,72 @@ describeWithDatabase('PrismaInventoryRepository product event idempotency', () =
     );
   });
 
-  it('rejects inactive windows, user-limit violations, and conflicting replays', async () => {
+  it('reports a sale that has not started', async () => {
     await seedSale(prisma, {
       normalQuantity: 5,
       saleLimit: 5,
       startsAt: new Date(Date.now() + 60_000),
       endsAt: new Date(Date.now() + 120_000),
     });
-    await expect(repository.reserveStock(saleOperation(1))).rejects.toBeInstanceOf(
-      InvalidStockOperationError,
-    );
 
-    await prisma.flashSaleStock.update({
-      where: { flashSaleItemId: 501n },
-      data: { startsAt: new Date(Date.now() - 60_000), endsAt: new Date(Date.now() + 60_000) },
+    await expect(repository.reserveStock(saleOperation(1))).rejects.toMatchObject({
+      code: 'FLASH_SALE_NOT_ACTIVE',
     });
+  });
+
+  it('reports a sale that has ended', async () => {
+    await seedSale(prisma, {
+      normalQuantity: 5,
+      saleLimit: 5,
+      startsAt: new Date(Date.now() - 120_000),
+      endsAt: new Date(Date.now() - 60_000),
+    });
+
+    await expect(repository.reserveStock(saleOperation(1))).rejects.toMatchObject({
+      code: 'FLASH_SALE_ENDED',
+    });
+  });
+
+  it('reports sale inventory that is not initialized', async () => {
+    await prisma.inventoryStock.create({
+      data: {
+        productId: 100n,
+        productSkuId: 1001n,
+        skuCode: 'KB-BLACK',
+        status: 'ACTIVE',
+        availableQuantity: 5,
+      },
+    });
+
+    await expect(repository.reserveStock(saleOperation(1))).rejects.toMatchObject({
+      code: 'FLASH_SALE_NOT_READY',
+    });
+  });
+
+  it('reports exhausted sale allocation', async () => {
+    await seedSale(prisma, { normalQuantity: 5, saleLimit: 1 });
+    await repository.reserveStock(saleOperation(1));
+
+    await expect(repository.reserveStock(saleOperation(2))).rejects.toMatchObject({
+      code: 'FLASH_SALE_SOLD_OUT',
+    });
+  });
+
+  it('reports a user who already holds an active sale claim', async () => {
+    await seedSale(prisma, { normalQuantity: 5, saleLimit: 5 });
+    await repository.reserveStock(saleOperation(1, { userId: 77n }));
+
+    await expect(repository.reserveStock(saleOperation(2, { userId: 77n }))).rejects.toMatchObject({
+      code: 'FLASH_SALE_LIMIT_REACHED',
+    });
+  });
+
+  it('rejects per-request user-limit violations and conflicting replays', async () => {
+    await seedSale(prisma, { normalQuantity: 5, saleLimit: 5 });
+
     await expect(
       repository.reserveStock({ ...saleOperation(1), items: [{ ...saleItem(), quantity: 2 }] }),
-    ).rejects.toBeInstanceOf(InvalidStockOperationError);
+    ).rejects.toBeInstanceOf(FlashSaleReservationError);
 
     const operation = saleOperation(1);
     await repository.reserveStock(operation);
