@@ -11,6 +11,11 @@ export interface OrderItemCreateData {
   imageUrl?: string | null;
   price: number;
   quantity: number;
+  regularPrice?: number | null;
+  priceSource?: string | null;
+  flashSaleId?: bigint | null;
+  flashSaleItemId?: bigint | null;
+  saleEndsAt?: Date | null;
 }
 
 export interface OrderCreateData {
@@ -18,6 +23,7 @@ export interface OrderCreateData {
   checkoutId?: string;
   cartId?: bigint;
   requestHash?: string;
+  requestHashVersion?: number;
   totalAmount: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;

@@ -57,6 +57,7 @@ model CheckoutAttempt {
   cartId               BigInt                @unique @map("cart_id")
   idempotencyKey       String                @map("idempotency_key") @db.Uuid
   requestHash          String                @map("request_hash") @db.Char(64)
+  requestHashVersion   Int                   @default(2) @map("request_hash_version")
   itemsSnapshot        Json                  @map("items_snapshot")
   status               CheckoutStatus        @default(STARTED)
   orderId              BigInt?               @map("order_id")

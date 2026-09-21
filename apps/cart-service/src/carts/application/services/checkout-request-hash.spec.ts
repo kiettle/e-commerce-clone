@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   hashCheckoutRequest,
   serializeCheckoutRequest,
@@ -7,6 +9,13 @@ import {
 } from './checkout-request-hash';
 
 describe('checkout request hash', () => {
+  const v2Fixture = JSON.parse(
+    readFileSync(join(process.cwd(), 'libs/proto/test-fixtures/checkout-hash-v2.json'), 'utf8'),
+  ) as {
+    input: Record<string, unknown> & { items: Array<Record<string, unknown>> };
+    canonicalJson: string;
+    sha256: string;
+  };
   const item: CheckoutHashItem = {
     productSkuId: 100n,
     productName: 'Example',
@@ -23,6 +32,28 @@ describe('checkout request hash', () => {
   it('matches the fixed version 1 JSON and SHA-256 fixture', () => {
     expect(serializeCheckoutRequest(input)).toBe(canonicalJson);
     expect(hashCheckoutRequest(input)).toBe(expectedHash);
+  });
+
+  it('matches the shared fixed version 2 sale snapshot fixture', () => {
+    const fixtureInput = {
+      userId: BigInt(v2Fixture.input.userId as string),
+      cartId: BigInt(v2Fixture.input.cartId as string),
+      items: v2Fixture.input.items.map((fixtureItem) => ({
+        ...fixtureItem,
+        productSkuId: BigInt(fixtureItem.productSkuId as string),
+        flashSaleId: BigInt(fixtureItem.flashSaleId as string),
+        flashSaleItemId: BigInt(fixtureItem.flashSaleItemId as string),
+      })) as CheckoutHashItem[],
+    };
+
+    expect(serializeCheckoutRequest(fixtureInput, 2)).toBe(v2Fixture.canonicalJson);
+    expect(hashCheckoutRequest(fixtureInput, 2)).toBe(v2Fixture.sha256);
+  });
+
+  it('rejects unknown hash versions', () => {
+    expect(() => hashCheckoutRequest(input, 3)).toThrow(
+      'Unsupported checkout request hash version: 3.',
+    );
   });
 
   it('hashes non-ASCII product names as UTF-8', () => {

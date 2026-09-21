@@ -49,6 +49,7 @@ describe('CheckoutCartUseCase', () => {
     checkoutId,
     cartId: 20n,
     requestHash: 'a'.repeat(64),
+    requestHashVersion: 1,
   };
   const checkedOutCart = new CartEntity({
     id: 20n,

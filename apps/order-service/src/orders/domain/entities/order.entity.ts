@@ -8,6 +8,7 @@ export interface OrderEntityProps {
   checkoutId?: string | null;
   cartId?: bigint | null;
   requestHash?: string | null;
+  requestHashVersion?: number | null;
   totalAmount: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
@@ -23,6 +24,7 @@ export class OrderEntity {
   readonly checkoutId: string | null;
   readonly cartId: bigint | null;
   readonly requestHash: string | null;
+  readonly requestHashVersion: number | null;
   readonly totalAmount: number;
   readonly status: OrderStatus;
   readonly paymentStatus: PaymentStatus;
@@ -37,6 +39,7 @@ export class OrderEntity {
     this.checkoutId = props.checkoutId ?? null;
     this.cartId = props.cartId ?? null;
     this.requestHash = props.requestHash ?? null;
+    this.requestHashVersion = props.requestHashVersion ?? null;
     this.totalAmount = props.totalAmount;
     this.status = props.status;
     this.paymentStatus = props.paymentStatus;

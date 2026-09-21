@@ -14,6 +14,7 @@ interface CreateOrderGrpcRequest {
   checkout_id?: string;
   cart_id?: string;
   request_hash?: string;
+  request_hash_version?: number;
   items: Array<{
     product_sku_id: string;
     product_name: string;
@@ -21,6 +22,11 @@ interface CreateOrderGrpcRequest {
     quantity: number;
     sku_code?: string;
     image_url?: string;
+    regular_price?: number;
+    price_source?: string;
+    flash_sale_id?: string;
+    flash_sale_item_id?: string;
+    sale_ends_at?: string;
   }>;
 }
 
@@ -44,32 +50,30 @@ export class OrdersGrpcController {
   ) {}
 
   @GrpcMethod('OrderService', 'CreateOrder')
-  async createOrder(
-    request: CreateOrderGrpcRequest,
-  ): Promise<CreateOrderGrpcResponse> {
+  async createOrder(request: CreateOrderGrpcRequest): Promise<CreateOrderGrpcResponse> {
     let order: OrderEntity;
 
     try {
       order = await this.createOrderUseCase.execute({
         userId: parseInteger(request.user_id, 'user_id'),
         checkoutId: request.checkout_id,
-        cartId: request.cart_id
-          ? parseInteger(request.cart_id, 'cart_id')
-          : undefined,
+        cartId: request.cart_id ? parseInteger(request.cart_id, 'cart_id') : undefined,
         requestHash: request.request_hash,
+        requestHashVersion: request.request_hash_version,
         items: request.items.map((item) => ({
-          productSkuId: parseInteger(
-            item.product_sku_id,
-            'product_sku_id',
-          ),
+          productSkuId: parseInteger(item.product_sku_id, 'product_sku_id'),
           productName: item.product_name,
           price: item.price,
           quantity: item.quantity,
           skuCode: item.sku_code,
           imageUrl: item.image_url || null,
+          regularPrice: item.regular_price,
+          priceSource: item.price_source,
+          flashSaleId: parseOptionalPositiveInteger(item.flash_sale_id),
+          flashSaleItemId: parseOptionalPositiveInteger(item.flash_sale_item_id),
+          saleEndsAt: item.sale_ends_at || null,
         })),
       });
-
     } catch (error) {
       throw this.toRpcException(error);
     }
@@ -89,9 +93,7 @@ export class OrdersGrpcController {
     request: GetOrderByCheckoutIdGrpcRequest,
   ): Promise<CreateOrderGrpcResponse> {
     try {
-      const order = await this.getOrderByCheckoutIdUseCase.execute(
-        request.checkout_id,
-      );
+      const order = await this.getOrderByCheckoutIdUseCase.execute(request.checkout_id);
 
       return toGrpcResponse(order);
     } catch (error) {
@@ -117,10 +119,7 @@ export class OrdersGrpcController {
     }
 
     this.logger.error('Order gRPC request failed.', error);
-    return createRpcException(
-      GrpcStatus.UNAVAILABLE,
-      'Order service is unavailable.',
-    );
+    return createRpcException(GrpcStatus.UNAVAILABLE, 'Order service is unavailable.');
   }
 }
 
@@ -157,10 +156,7 @@ class DemoLostCreateResponseFault {
   }
 }
 
-function toGrpcResponse(order: {
-  id: bigint;
-  status: string;
-}): CreateOrderGrpcResponse {
+function toGrpcResponse(order: { id: bigint; status: string }): CreateOrderGrpcResponse {
   return {
     order_id: order.id.toString(),
     status: order.status,
@@ -177,4 +173,9 @@ function parseInteger(value: string, field: string): bigint {
   } catch {
     throw new InvalidOrderError(`${field} must be a valid integer.`);
   }
+}
+
+function parseOptionalPositiveInteger(value: string | undefined): bigint | null {
+  if (!value || value === '0') return null;
+  return parseInteger(value, 'sale identifier');
 }

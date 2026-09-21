@@ -70,6 +70,40 @@ describe('OrdersGrpcController', () => {
     });
   });
 
+  it('maps version 2 sale snapshot fields into the create command', async () => {
+    createOrder.mockResolvedValue(order);
+
+    await controller.createOrder({
+      ...createRequest,
+      request_hash_version: 2,
+      items: [
+        {
+          ...createRequest.items[0],
+          regular_price: 39.99,
+          price_source: 'FLASH_SALE',
+          flash_sale_id: '10',
+          flash_sale_item_id: '501',
+          sale_ends_at: '2026-09-20T04:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestHashVersion: 2,
+        items: [
+          expect.objectContaining({
+            regularPrice: 39.99,
+            priceSource: 'FLASH_SALE',
+            flashSaleId: 10n,
+            flashSaleItemId: 501n,
+            saleEndsAt: '2026-09-20T04:00:00.000Z',
+          }),
+        ],
+      }),
+    );
+  });
+
   it('can simulate a lost create response after persisting the order', async () => {
     process.env.ORDER_DEMO_LOST_RESPONSE_AFTER = '0';
     createOrder.mockResolvedValue(order);
@@ -78,19 +112,14 @@ describe('OrdersGrpcController', () => {
       { execute: getOrderByCheckoutId } as unknown as GetOrderByCheckoutIdUseCase,
     );
 
-    await expectRpcCode(
-      faultController.createOrder(createRequest),
-      GrpcStatus.UNAVAILABLE,
-    );
+    await expectRpcCode(faultController.createOrder(createRequest), GrpcStatus.UNAVAILABLE);
     expect(createOrder).toHaveBeenCalledTimes(1);
   });
 
   it('returns a structured lookup result', async () => {
     getOrderByCheckoutId.mockResolvedValue(order);
 
-    await expect(
-      controller.getOrderByCheckoutId({ checkout_id: checkoutId }),
-    ).resolves.toEqual({
+    await expect(controller.getOrderByCheckoutId({ checkout_id: checkoutId })).resolves.toEqual({
       order_id: '12',
       status: OrderStatus.Created,
     });
@@ -100,10 +129,7 @@ describe('OrdersGrpcController', () => {
   it('maps malformed checkout input to INVALID_ARGUMENT', async () => {
     createOrder.mockRejectedValue(new InvalidOrderError('Malformed hash.'));
 
-    await expectRpcCode(
-      controller.createOrder(createRequest),
-      GrpcStatus.INVALID_ARGUMENT,
-    );
+    await expectRpcCode(controller.createOrder(createRequest), GrpcStatus.INVALID_ARGUMENT);
   });
 
   it('maps malformed numeric input to INVALID_ARGUMENT before the use case', async () => {
@@ -118,10 +144,7 @@ describe('OrdersGrpcController', () => {
   it('maps checkout ID reuse with another hash to ALREADY_EXISTS', async () => {
     createOrder.mockRejectedValue(new CheckoutIdConflictError(checkoutId));
 
-    await expectRpcCode(
-      controller.createOrder(createRequest),
-      GrpcStatus.ALREADY_EXISTS,
-    );
+    await expectRpcCode(controller.createOrder(createRequest), GrpcStatus.ALREADY_EXISTS);
   });
 
   it('maps a missing checkout order to NOT_FOUND', async () => {
@@ -134,14 +157,9 @@ describe('OrdersGrpcController', () => {
   });
 
   it('maps an invalid order state to FAILED_PRECONDITION', async () => {
-    createOrder.mockRejectedValue(
-      new InvalidOrderStateError('Order state is invalid.'),
-    );
+    createOrder.mockRejectedValue(new InvalidOrderStateError('Order state is invalid.'));
 
-    await expectRpcCode(
-      controller.createOrder(createRequest),
-      GrpcStatus.FAILED_PRECONDITION,
-    );
+    await expectRpcCode(controller.createOrder(createRequest), GrpcStatus.FAILED_PRECONDITION);
   });
 
   it('maps an unexpected dependency failure to UNAVAILABLE', async () => {
@@ -155,10 +173,7 @@ describe('OrdersGrpcController', () => {
   });
 });
 
-async function expectRpcCode(
-  operation: Promise<unknown>,
-  expectedCode: GrpcStatus,
-): Promise<void> {
+async function expectRpcCode(operation: Promise<unknown>, expectedCode: GrpcStatus): Promise<void> {
   try {
     await operation;
     throw new Error('Expected the gRPC operation to fail.');

@@ -4,6 +4,7 @@ import {
   Prisma,
 } from '../../../../../../../prisma/generated/cart';
 import {
+  CURRENT_CHECKOUT_HASH_VERSION,
   hashCheckoutRequest,
   serializeCheckoutRequest,
 } from '../../../application/services/checkout-request-hash';
@@ -114,30 +115,27 @@ export class PrismaCheckoutAttemptRepository implements CheckoutAttemptRepositor
             imageUrl: item.imageUrl,
             price: Number(item.price),
             quantity: item.quantity,
+            priceSource: item.priceSource,
+            regularPrice: Number(item.regularPrice),
+            flashSaleId: item.flashSaleId,
+            flashSaleItemId: item.flashSaleItemId,
+            saleEndsAt: item.saleEndsAt,
           })),
         };
-        const canonical = JSON.parse(serializeCheckoutRequest(hashInput)) as {
+        const canonical = JSON.parse(
+          serializeCheckoutRequest(hashInput, CURRENT_CHECKOUT_HASH_VERSION),
+        ) as {
           items: CheckoutItemSnapshot[];
         };
-        const cartItemBySkuId = new Map(
-          cart.items.map((item) => [item.productSkuId.toString(), item]),
-        );
-        const itemsSnapshot = canonical.items.map((item) => {
-          const cartItem = cartItemBySkuId.get(item.productSkuId);
-          return {
-            ...item,
-            flashSaleId: cartItem?.flashSaleId?.toString() ?? null,
-            flashSaleItemId: cartItem?.flashSaleItemId?.toString() ?? null,
-          };
-        });
 
         return transaction.checkoutAttempt.create({
           data: {
             userId,
             cartId,
             idempotencyKey,
-            requestHash: hashCheckoutRequest(hashInput),
-            itemsSnapshot: itemsSnapshot as unknown as Prisma.InputJsonValue,
+            requestHash: hashCheckoutRequest(hashInput, CURRENT_CHECKOUT_HASH_VERSION),
+            requestHashVersion: CURRENT_CHECKOUT_HASH_VERSION,
+            itemsSnapshot: canonical.items as unknown as Prisma.InputJsonValue,
             status: CheckoutStatus.Started,
             reconciliationAction: ReconciliationAction.ReserveStock,
           },
@@ -356,6 +354,7 @@ function toDomain(attempt: PrismaCheckoutAttempt): CheckoutAttemptEntity {
     cartId: attempt.cartId,
     idempotencyKey: attempt.idempotencyKey,
     requestHash: attempt.requestHash,
+    requestHashVersion: attempt.requestHashVersion,
     itemsSnapshot: attempt.itemsSnapshot as unknown as CheckoutItemSnapshot[],
     status: attempt.status as CheckoutStatus,
     orderId: attempt.orderId,

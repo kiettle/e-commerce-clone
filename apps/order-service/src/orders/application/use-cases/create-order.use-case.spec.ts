@@ -7,14 +7,14 @@ import { InvalidOrderError } from '../../domain/errors/invalid-order.error';
 import { InvalidOrderStateError } from '../../domain/errors/invalid-order-state.error';
 import { OrderRepositoryPort } from '../../domain/repositories/order.repository.port';
 import { CreateOrderCommand, CreateOrderItemCommand } from '../dto/create-order.command';
+import { hashCheckoutRequest } from '../services/checkout-request-hash';
 import { CreateOrderUseCase } from './create-order.use-case';
 
 describe('CreateOrderUseCase', () => {
   const checkoutIdentity = {
     checkoutId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     cartId: 55n,
-    requestHash:
-      '2a13c413324eeb88998d07a089827de9e41962dbd347308d8ed483adf33189c7',
+    requestHash: '2a13c413324eeb88998d07a089827de9e41962dbd347308d8ed483adf33189c7',
   };
   const validItem: CreateOrderItemCommand = {
     productName: 'Keyboard',
@@ -173,9 +173,7 @@ describe('CreateOrderUseCase', () => {
         items: [validItem],
       }),
     ).resolves.toBe(persistedOrder);
-    expect(orders.create).toHaveBeenCalledWith(
-      expect.objectContaining(checkoutIdentity),
-    );
+    expect(orders.create).toHaveBeenCalledWith(expect.objectContaining(checkoutIdentity));
   });
 
   it('returns the existing order when the checkout ID and hash match', async () => {
@@ -263,17 +261,12 @@ describe('CreateOrderUseCase', () => {
         requestHash: '0'.repeat(64),
         items: [validItem],
       }),
-    ).rejects.toThrow(
-      'Order request hash does not match its checkout snapshot.',
-    );
+    ).rejects.toThrow('Order request hash does not match its checkout snapshot.');
     expect(orders.create).not.toHaveBeenCalled();
   });
 
   it.each([
-    [
-      'an invalid checkout UUID',
-      { ...checkoutIdentity, checkoutId: 'not-a-uuid' },
-    ],
+    ['an invalid checkout UUID', { ...checkoutIdentity, checkoutId: 'not-a-uuid' }],
     ['a non-positive cart ID', { ...checkoutIdentity, cartId: 0n }],
     ['a request hash with the wrong length', { ...checkoutIdentity, requestHash: 'abc' }],
     [
@@ -296,5 +289,130 @@ describe('CreateOrderUseCase', () => {
       }),
     ).rejects.toBeInstanceOf(InvalidOrderError);
     expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('stores version 2 sale pricing while calculating total from the final price', async () => {
+    const saleItem = {
+      ...validItem,
+      price: 19.9,
+      regularPrice: 39.9,
+      priceSource: 'FLASH_SALE',
+      flashSaleId: 10n,
+      flashSaleItemId: 501n,
+      saleEndsAt: '2026-09-20T04:00:00.000Z',
+    };
+    const identity = {
+      checkoutId: checkoutIdentity.checkoutId,
+      cartId: checkoutIdentity.cartId,
+      requestHashVersion: 2,
+      requestHash: hashCheckoutRequest(
+        { userId: 7n, cartId: checkoutIdentity.cartId, items: [saleItem] },
+        2,
+      ),
+    };
+    const persisted = new OrderEntity({
+      id: 9001n,
+      userId: 7n,
+      ...identity,
+      totalAmount: 19.9,
+      status: OrderStatus.Created,
+      paymentStatus: PaymentStatus.Pending,
+    });
+    orders.create.mockResolvedValue(persisted);
+
+    await expect(useCase.execute({ userId: 7n, ...identity, items: [saleItem] })).resolves.toBe(
+      persisted,
+    );
+    expect(orders.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        totalAmount: 19.9,
+        requestHashVersion: 2,
+        items: [
+          expect.objectContaining({
+            price: 19.9,
+            regularPrice: 39.9,
+            priceSource: 'FLASH_SALE',
+            flashSaleId: 10n,
+            flashSaleItemId: 501n,
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('rejects altered sale context for the same version 2 request hash', async () => {
+    const original = {
+      ...validItem,
+      regularPrice: 39.9,
+      priceSource: 'FLASH_SALE',
+      flashSaleId: 10n,
+      flashSaleItemId: 501n,
+      saleEndsAt: '2026-09-20T04:00:00.000Z',
+    };
+    const requestHash = hashCheckoutRequest(
+      { userId: 7n, cartId: checkoutIdentity.cartId, items: [original] },
+      2,
+    );
+
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        checkoutId: checkoutIdentity.checkoutId,
+        cartId: checkoutIdentity.cartId,
+        requestHash,
+        requestHashVersion: 2,
+        items: [{ ...original, flashSaleItemId: 999n }],
+      }),
+    ).rejects.toThrow('Order request hash does not match its checkout snapshot.');
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('replays the original version 2 order and rejects a changed sale hash', async () => {
+    const existing = new OrderEntity({
+      id: 9001n,
+      userId: 7n,
+      checkoutId: checkoutIdentity.checkoutId,
+      cartId: checkoutIdentity.cartId,
+      requestHash: 'a'.repeat(64),
+      requestHashVersion: 2,
+      totalAmount: 19.9,
+      status: OrderStatus.Created,
+      paymentStatus: PaymentStatus.Pending,
+    });
+    orders.findByCheckoutId.mockResolvedValue(existing);
+
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        checkoutId: checkoutIdentity.checkoutId,
+        cartId: checkoutIdentity.cartId,
+        requestHash: 'a'.repeat(64),
+        requestHashVersion: 2,
+        items: [],
+      }),
+    ).resolves.toBe(existing);
+
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        checkoutId: checkoutIdentity.checkoutId,
+        cartId: checkoutIdentity.cartId,
+        requestHash: 'b'.repeat(64),
+        requestHashVersion: 2,
+        items: [],
+      }),
+    ).rejects.toBeInstanceOf(CheckoutIdConflictError);
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects unknown checkout hash versions', async () => {
+    await expect(
+      useCase.execute({
+        userId: 7n,
+        ...checkoutIdentity,
+        requestHashVersion: 3,
+        items: [validItem],
+      }),
+    ).rejects.toThrow('Unsupported checkout request hash version: 3.');
   });
 });

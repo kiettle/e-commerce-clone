@@ -17,6 +17,7 @@ message CreateOrderRequest {
   string checkout_id = 3;
   int64 cart_id = 4;
   string request_hash = 5;
+  int32 request_hash_version = 6;
 }
 
 message GetOrderByCheckoutIdRequest {
@@ -30,6 +31,11 @@ message CreateOrderItem {
   int32 quantity = 4;
   string sku_code = 5;
   string image_url = 6;
+  double regular_price = 7;
+  string price_source = 8;
+  int64 flash_sale_id = 9;
+  int64 flash_sale_item_id = 10;
+  string sale_ends_at = 11;
 }
 
 message CreateOrderResponse {

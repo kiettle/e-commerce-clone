@@ -30,6 +30,7 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
           checkoutId: data.checkoutId,
           cartId: data.cartId,
           requestHash: data.requestHash,
+          requestHashVersion: data.requestHashVersion,
           totalAmount: data.totalAmount,
           status: data.status,
           paymentStatus: data.paymentStatus,
@@ -42,6 +43,11 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
               imageUrl: item.imageUrl,
               price: item.price,
               quantity: item.quantity,
+              regularPrice: item.regularPrice,
+              priceSource: item.priceSource,
+              flashSaleId: item.flashSaleId,
+              flashSaleItemId: item.flashSaleItemId,
+              saleEndsAt: item.saleEndsAt,
             })),
           },
         },
@@ -65,7 +71,9 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
       if (
         winningOrder.requestHash !== data.requestHash ||
         winningOrder.userId !== data.userId ||
-        winningOrder.cartId !== data.cartId
+        winningOrder.cartId !== data.cartId ||
+        effectiveHashVersion(winningOrder.requestHashVersion) !==
+          effectiveHashVersion(data.requestHashVersion)
       ) {
         throw new CheckoutIdConflictError(data.checkoutId);
       }
@@ -90,6 +98,7 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
       checkoutId: order.checkoutId,
       cartId: order.cartId,
       requestHash: order.requestHash,
+      requestHashVersion: order.requestHashVersion,
       totalAmount: Number(order.totalAmount),
       status: order.status as OrderStatus,
       paymentStatus: order.paymentStatus as PaymentStatus,
@@ -110,17 +119,21 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
       imageUrl: item.imageUrl,
       price: Number(item.price),
       quantity: item.quantity,
+      regularPrice: item.regularPrice == null ? null : Number(item.regularPrice),
+      priceSource: item.priceSource,
+      flashSaleId: item.flashSaleId,
+      flashSaleItemId: item.flashSaleItemId,
+      saleEndsAt: item.saleEndsAt,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     });
   }
 }
 
+function effectiveHashVersion(version: number | null | undefined): number {
+  return version ?? 1;
+}
+
 function isUniqueConstraintError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'P2002'
-  );
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }

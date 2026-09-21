@@ -7,6 +7,11 @@ export interface OrderCreateItem {
   imageUrl?: string | null;
   price: number;
   quantity: number;
+  regularPrice?: number;
+  priceSource?: string;
+  flashSaleId?: bigint | null;
+  flashSaleItemId?: bigint | null;
+  saleEndsAt?: string | null;
 }
 
 export interface OrderCreateResult {
@@ -18,6 +23,7 @@ export interface OrderCheckoutIdentity {
   checkoutId: string;
   cartId: bigint;
   requestHash: string;
+  requestHashVersion: number;
 }
 
 export interface OrderCreatorPort {

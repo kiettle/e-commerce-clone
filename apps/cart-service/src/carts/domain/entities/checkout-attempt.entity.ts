@@ -8,8 +8,11 @@ export interface CheckoutItemSnapshot {
   imageUrl: string | null;
   price: string;
   quantity: number;
+  priceSource?: string;
+  regularPrice?: string;
   flashSaleId?: string | null;
   flashSaleItemId?: string | null;
+  saleEndsAt?: string | null;
 }
 
 export interface CheckoutAttemptEntityProps {
@@ -18,6 +21,7 @@ export interface CheckoutAttemptEntityProps {
   cartId: bigint;
   idempotencyKey: string;
   requestHash: string;
+  requestHashVersion?: number;
   itemsSnapshot: CheckoutItemSnapshot[];
   status: CheckoutStatus;
   orderId?: bigint | null;
@@ -34,6 +38,7 @@ export class CheckoutAttemptEntity {
   readonly cartId: bigint;
   readonly idempotencyKey: string;
   readonly requestHash: string;
+  readonly requestHashVersion: number;
   readonly itemsSnapshot: CheckoutItemSnapshot[];
   readonly status: CheckoutStatus;
   readonly orderId: bigint | null;
@@ -49,6 +54,7 @@ export class CheckoutAttemptEntity {
     this.cartId = props.cartId;
     this.idempotencyKey = props.idempotencyKey;
     this.requestHash = props.requestHash;
+    this.requestHashVersion = props.requestHashVersion ?? 1;
     this.itemsSnapshot = props.itemsSnapshot;
     this.status = props.status;
     this.orderId = props.orderId ?? null;

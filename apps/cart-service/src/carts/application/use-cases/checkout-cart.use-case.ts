@@ -136,6 +136,7 @@ export class CheckoutCartUseCase {
         checkoutId: attempt.id,
         cartId: attempt.cartId,
         requestHash: attempt.requestHash,
+        requestHashVersion: attempt.requestHashVersion,
       });
     } catch (error) {
       if (error instanceof OrderCreationFailedError && error.outcome === 'DEFINITE') {
@@ -296,6 +297,15 @@ function toOrderItems(attempt: CheckoutAttemptEntity): OrderCreateItem[] {
     imageUrl: item.imageUrl,
     price: Number(item.price),
     quantity: item.quantity,
+    ...(attempt.requestHashVersion === 2
+      ? {
+          regularPrice: Number(item.regularPrice),
+          priceSource: item.priceSource,
+          flashSaleId: item.flashSaleId == null ? null : BigInt(item.flashSaleId),
+          flashSaleItemId: item.flashSaleItemId == null ? null : BigInt(item.flashSaleItemId),
+          saleEndsAt: item.saleEndsAt ?? null,
+        }
+      : {}),
   }));
 }
 

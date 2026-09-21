@@ -16,6 +16,7 @@ interface CheckoutIdentity {
   checkoutId: string;
   cartId: bigint;
   requestHash: string;
+  requestHashVersion: number;
 }
 
 export class CreateOrderUseCase {
@@ -26,30 +27,26 @@ export class CreateOrderUseCase {
     const checkoutIdentity = getCheckoutIdentity(command);
 
     if (checkoutIdentity) {
-      const existingOrder = await this.orders.findByCheckoutId(
-        checkoutIdentity.checkoutId,
-      );
+      const existingOrder = await this.orders.findByCheckoutId(checkoutIdentity.checkoutId);
 
       if (existingOrder) {
-        return resolveExistingCheckoutOrder(
-          existingOrder,
-          checkoutIdentity,
-          command.userId,
-        );
+        return resolveExistingCheckoutOrder(existingOrder, checkoutIdentity, command.userId);
       }
 
       assertValidItems(command.items);
+      assertValidCheckoutItems(command.items, checkoutIdentity.requestHashVersion);
 
-      const expectedHash = hashCheckoutRequest({
-        userId: command.userId,
-        cartId: checkoutIdentity.cartId,
-        items: toCheckoutHashItems(command.items),
-      });
+      const expectedHash = hashCheckoutRequest(
+        {
+          userId: command.userId,
+          cartId: checkoutIdentity.cartId,
+          items: toCheckoutHashItems(command.items),
+        },
+        checkoutIdentity.requestHashVersion,
+      );
 
       if (checkoutIdentity.requestHash !== expectedHash) {
-        throw new InvalidOrderError(
-          'Order request hash does not match its checkout snapshot.',
-        );
+        throw new InvalidOrderError('Order request hash does not match its checkout snapshot.');
       }
     } else {
       assertValidItems(command.items);
@@ -62,6 +59,15 @@ export class CreateOrderUseCase {
       imageUrl: item.imageUrl,
       price: toMoneyAmount(item.price),
       quantity: item.quantity,
+      ...(checkoutIdentity?.requestHashVersion === 2
+        ? {
+            regularPrice: toMoneyAmount(item.regularPrice!),
+            priceSource: item.priceSource!,
+            flashSaleId: item.flashSaleId ?? null,
+            flashSaleItemId: item.flashSaleItemId ?? null,
+            saleEndsAt: item.saleEndsAt ? new Date(item.saleEndsAt) : null,
+          }
+        : {}),
     }));
 
     const orderData = {
@@ -78,13 +84,12 @@ export class CreateOrderUseCase {
   }
 }
 
-function getCheckoutIdentity(
-  command: CreateOrderCommand,
-): CheckoutIdentity | null {
+function getCheckoutIdentity(command: CreateOrderCommand): CheckoutIdentity | null {
   const hasAnyIdentity =
     command.checkoutId != null ||
     command.cartId != null ||
-    command.requestHash != null;
+    command.requestHash != null ||
+    command.requestHashVersion != null;
 
   if (!hasAnyIdentity) {
     return null;
@@ -103,11 +108,18 @@ function getCheckoutIdentity(
   }
 
   assertValidRequestHash(command.requestHash);
+  const requestHashVersion = command.requestHashVersion ?? 1;
+  if (requestHashVersion !== 1 && requestHashVersion !== 2) {
+    throw new InvalidOrderError(
+      `Unsupported checkout request hash version: ${requestHashVersion}.`,
+    );
+  }
 
   return {
     checkoutId: command.checkoutId,
     cartId: command.cartId,
     requestHash: command.requestHash,
+    requestHashVersion,
   };
 }
 
@@ -116,20 +128,15 @@ function resolveExistingCheckoutOrder(
   identity: CheckoutIdentity,
   userId: bigint,
 ): OrderEntity {
-  if (
-    order.checkoutId == null ||
-    order.cartId == null ||
-    order.requestHash == null
-  ) {
-    throw new InvalidOrderStateError(
-      `Order ${order.id} has incomplete checkout identity.`,
-    );
+  if (order.checkoutId == null || order.cartId == null || order.requestHash == null) {
+    throw new InvalidOrderStateError(`Order ${order.id} has incomplete checkout identity.`);
   }
 
   if (
     order.requestHash !== identity.requestHash ||
     order.userId !== userId ||
-    order.cartId !== identity.cartId
+    order.cartId !== identity.cartId ||
+    (order.requestHashVersion ?? 1) !== identity.requestHashVersion
   ) {
     throw new CheckoutIdConflictError(identity.checkoutId);
   }
@@ -137,17 +144,50 @@ function resolveExistingCheckoutOrder(
   return order;
 }
 
+function assertValidCheckoutItems(
+  items: CreateOrderItemCommand[],
+  requestHashVersion: number,
+): void {
+  if (requestHashVersion === 1) return;
+
+  for (const item of items) {
+    if (item.regularPrice == null || !Number.isFinite(item.regularPrice) || item.regularPrice < 0) {
+      throw new InvalidOrderError('Version 2 order items require a valid regularPrice.');
+    }
+
+    if (item.priceSource !== 'REGULAR' && item.priceSource !== 'FLASH_SALE') {
+      throw new InvalidOrderError('Version 2 order items require a valid priceSource.');
+    }
+
+    const hasSaleIds = item.flashSaleId != null && item.flashSaleItemId != null;
+    const hasAnySaleId = item.flashSaleId != null || item.flashSaleItemId != null;
+    if (item.priceSource === 'FLASH_SALE') {
+      if (
+        !hasSaleIds ||
+        item.flashSaleId! <= 0n ||
+        item.flashSaleItemId! <= 0n ||
+        !item.saleEndsAt ||
+        Number.isNaN(new Date(item.saleEndsAt).getTime())
+      ) {
+        throw new InvalidOrderError('Flash-sale order items require valid sale context.');
+      }
+    } else if (hasAnySaleId || item.saleEndsAt != null) {
+      throw new InvalidOrderError('Regular order items cannot include flash-sale context.');
+    }
+  }
+}
+
 function toCheckoutHashItems(items: CreateOrderItemCommand[]) {
   return items.map((item) => {
     if (!item.skuCode) {
-      throw new InvalidOrderError(
-        'Order item skuCode is required for checkout orders.',
-      );
+      throw new InvalidOrderError('Order item skuCode is required for checkout orders.');
     }
 
     return {
       ...item,
       skuCode: item.skuCode,
+      priceSource: item.priceSource ?? undefined,
+      regularPrice: item.regularPrice ?? undefined,
     };
   });
 }

@@ -90,6 +90,69 @@ describe('PrismaCheckoutAttemptRepository startOrLoad', () => {
     );
     expect(transaction.checkoutAttempt.create).not.toHaveBeenCalled();
   });
+
+  it('persists new attempts with hash version 2 and the complete sale snapshot', async () => {
+    const saleEndsAt = new Date('2026-10-01T11:00:00.000Z');
+    const created = databaseAttempt({ requestHashVersion: 2 });
+    const transaction = {
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ now: new Date('2026-10-01T10:00:00.000Z') }]),
+      cart: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 20n,
+          userId: 10n,
+          status: 'ACTIVE',
+          items: [
+            {
+              productSkuId: 1001n,
+              productName: 'Wireless Keyboard',
+              skuCode: 'KB-BLACK',
+              imageUrl: null,
+              price: 19.9,
+              quantity: 1,
+              priceSource: 'FLASH_SALE',
+              regularPrice: 39.9,
+              flashSaleId: 10n,
+              flashSaleItemId: 501n,
+              saleEndsAt,
+            },
+          ],
+        }),
+      },
+      checkoutAttempt: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue(created),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (work: (client: typeof transaction) => unknown) =>
+        work(transaction),
+      ),
+    };
+
+    await new PrismaCheckoutAttemptRepository(prisma as unknown as PrismaService).startOrLoad(
+      10n,
+      20n,
+      idempotencyKey,
+    );
+
+    expect(transaction.checkoutAttempt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        requestHashVersion: 2,
+        itemsSnapshot: [
+          expect.objectContaining({
+            priceSource: 'FLASH_SALE',
+            regularPrice: '39.90',
+            flashSaleId: '10',
+            flashSaleItemId: '501',
+            saleEndsAt: saleEndsAt.toISOString(),
+          }),
+        ],
+      }),
+    });
+  });
 });
 
 describe('PrismaCheckoutAttemptRepository successful transitions', () => {
