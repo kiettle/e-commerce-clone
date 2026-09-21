@@ -6,8 +6,8 @@
   "scripts": {
     "build": "nest build",
     "build:all": "nest build gateway && nest build auth-service && nest build product-service && nest build inventory-service && nest build cart-service && nest build order-service",
-    "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
-    "lint": "eslint \"{apps,libs}/**/*.ts\"",
+    "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\" \"tests/**/*.ts\" \"vitest*.config.mts\"",
+    "lint": "eslint \"{apps,libs,tests}/**/*.ts\" \"vitest*.config.mts\"",
     "prisma:auth:generate": "prisma generate --config apps/auth-service/prisma/prisma.config.ts",
     "prisma:auth:migrate": "prisma migrate dev --config apps/auth-service/prisma/prisma.config.ts",
     "prisma:auth:deploy": "prisma migrate deploy --config apps/auth-service/prisma/prisma.config.ts",
@@ -47,9 +47,12 @@
     "frontend:build": "npm --prefix frontend run build",
     "frontend:lint": "npm --prefix frontend run lint",
     "outbox:replay:product": "nest build product-outbox-cli && node dist/apps/product-service/outbox-replay.js",
-    "test": "vitest run",
+    "test": "npm run test:unit",
+    "test:unit": "vitest run --config vitest.config.mts",
+    "test:contract": "vitest run --config vitest.contract.config.mts",
     "test:integration": "bash scripts/test-product-outbox-integration.sh",
-    "test:watch": "vitest"
+    "test:e2e": "vitest run --config vitest.e2e.config.mts",
+    "test:watch": "vitest --config vitest.config.mts"
   },
   "dependencies": {
     "@grpc/grpc-js": "1.14.4",

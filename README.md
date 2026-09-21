@@ -217,15 +217,15 @@ Shared protobuf files live in `libs/proto`.
 
 ## Technology Choices
 
-| Technology                    | Use in this project                                                   | Main trade-off                                                                     |
-| ----------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| NestJS + TypeScript           | Modules, dependency injection, DTO validation, HTTP and gRPC adapters | Productive structure, with more framework ceremony than a small service requires   |
-| Prisma + PostgreSQL           | Separate schema and database per stateful service                     | Strong local transactions, but no cross-service transaction or join                |
-| REST/JSON                     | Public gateway and simple internal catalog/cart calls                 | Easy to inspect; weaker contract enforcement than Protobuf                         |
-| gRPC + Protobuf               | Auth validation and checkout commands                                 | Typed and compact; harder to debug manually and currently lacks deadlines          |
-| Redpanda/Kafka API + Protobuf | Asynchronous product and flash-sale projections                        | Decouples inventory, while at-least-once delivery requires idempotent consumers     |
-| JWT + bcrypt                  | Authentication, password verification, and gateway role enforcement    | Stateless tokens scale well, but token revocation is not implemented                |
-| React + Vite                  | Focused demo UI                                                       | Improves presentation but is not the architectural focus                           |
+| Technology                    | Use in this project                                                   | Main trade-off                                                                   |
+| ----------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| NestJS + TypeScript           | Modules, dependency injection, DTO validation, HTTP and gRPC adapters | Productive structure, with more framework ceremony than a small service requires |
+| Prisma + PostgreSQL           | Separate schema and database per stateful service                     | Strong local transactions, but no cross-service transaction or join              |
+| REST/JSON                     | Public gateway and simple internal catalog/cart calls                 | Easy to inspect; weaker contract enforcement than Protobuf                       |
+| gRPC + Protobuf               | Auth validation and checkout commands                                 | Typed and compact; harder to debug manually and currently lacks deadlines        |
+| Redpanda/Kafka API + Protobuf | Asynchronous product and flash-sale projections                       | Decouples inventory, while at-least-once delivery requires idempotent consumers  |
+| JWT + bcrypt                  | Authentication, password verification, and gateway role enforcement   | Stateless tokens scale well, but token revocation is not implemented             |
+| React + Vite                  | Focused demo UI                                                       | Improves presentation but is not the architectural focus                         |
 
 ## Local Setup
 
@@ -312,16 +312,20 @@ npm run start:dev:order
 ```bash
 npm run build:all
 npm run lint
-npm test
+npm run test:unit
+npm run test:contract
+npm run test:integration
+npm run test:e2e
 npm run frontend:build
 npm run frontend:lint
 ```
 
-Vitest is configured for colocated `*.spec.ts` files. Focused suites cover auth,
-inventory reserve/release, order idempotency, checkout recovery, selected Prisma
-adapter behavior, and gateway checkout mapping. PostgreSQL and Kafka-dependent
-outbox, flash-sale concurrency, and checkout scenarios run separately through
-`npm run test:integration`.
+Tests run in four separately configured lanes. Colocated `*.spec.ts` files are
+unit tests and need no Docker. `*.contract.spec.ts` verifies transport contracts.
+`*.integration.spec.ts` runs serially against disposable PostgreSQL databases.
+`tests/e2e/**/*.e2e.spec.ts` owns full-stack workflows with PostgreSQL, Redpanda,
+HTTP, and gRPC. Every runner prints its lane and only discovers its own naming
+pattern. See [tests/README.md](tests/README.md) for the conventions.
 
 Flash-sale delivery uses `FLASH_SALE_EVENTS_TOPIC` and
 `INVENTORY_FLASH_SALE_KAFKA_GROUP_ID`. Product outbox polling uses
@@ -383,18 +387,24 @@ legacy, and current local databases with:
 npm run verify:migrations
 ```
 
-Verify product creation during a broker outage, duplicate Kafka delivery,
-product/outbox rollback, competing workers, flash-sale projection, sale checkout,
-expiry, allocation races, and per-user limits with:
+Run the PostgreSQL repository and concurrency tests with:
 
 ```bash
 npm run test:integration
 ```
 
-This command briefly stops and restarts the local Redpanda container. It uses a
-unique Kafka topic, disposable PostgreSQL databases, isolated application ports,
-and bounded state polling. The topic, databases, and service processes are
-removed when the command exits.
+Run product creation during a broker outage, duplicate Kafka delivery,
+flash-sale projection, sale checkout, expiry, allocation races, and per-user
+limits with:
+
+```bash
+npm run test:e2e
+```
+
+The E2E command briefly stops and restarts the local Redpanda container. It uses
+unique Kafka topics, disposable PostgreSQL databases, dynamically allocated
+application ports, and bounded state polling. Topics, databases, processes, and
+temporary files are removed whether the command passes or fails.
 
 The sale verification creates and schedules real sales, waits with bounded
 database polling for Kafka projections, and drives cart, inventory, order, and

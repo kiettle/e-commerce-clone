@@ -11,14 +11,14 @@ document falls behind.
 
 The repository is one NestJS monorepo with six separately runnable services:
 
-| Service             | Owns                                         | Main interfaces                 |
-| ------------------- | -------------------------------------------- | ------------------------------- |
-| `gateway`           | Public API boundary                          | REST in; HTTP and auth gRPC out |
-| `auth-service`      | Users, passwords, and tokens                 | REST and gRPC                   |
+| Service             | Owns                                          | Main interfaces                 |
+| ------------------- | --------------------------------------------- | ------------------------------- |
+| `gateway`           | Public API boundary                           | REST in; HTTP and auth gRPC out |
+| `auth-service`      | Users, passwords, and tokens                  | REST and gRPC                   |
 | `product-service`   | Catalog, flash sales, and durable outbox      | REST and Kafka producer         |
-| `inventory-service` | Normal and sale stock and reservations       | Kafka consumer and gRPC         |
-| `cart-service`      | Carts, price snapshots, and checkout attempts| REST; HTTP and gRPC clients     |
-| `order-service`     | Orders and order-item snapshots              | gRPC                            |
+| `inventory-service` | Normal and sale stock and reservations        | Kafka consumer and gRPC         |
+| `cart-service`      | Carts, price snapshots, and checkout attempts | REST; HTTP and gRPC clients     |
+| `order-service`     | Orders and order-item snapshots               | gRPC                            |
 
 Each stateful service owns its own PostgreSQL database. Never join across those
 databases. Communicate through REST, gRPC, Kafka events, or stored snapshots.
@@ -121,7 +121,15 @@ it does not create another order or release inventory.
 
 ## Testing Style
 
-Use colocated Vitest files named `*.spec.ts`.
+Use the repository's four Vitest lanes:
+
+- `*.spec.ts` beside production code for unit tests.
+- `*.contract.spec.ts` beside adapters or under `tests/contract/` for transport contracts.
+- `*.integration.spec.ts` beside adapters or under `tests/integration/` for real infrastructure.
+- `*.e2e.spec.ts` under `tests/e2e/` for complete application workflows.
+
+Keep shared test helpers in the lane's `support/` directory without a test-file
+suffix. Integration files run serially until their data isolation is proven.
 
 Choose the smallest test boundary that proves the behavior:
 
@@ -178,8 +186,12 @@ finishing a source change:
 ```bash
 npm run build:all
 npm run lint
-npm test
+npm run test:unit
+npm run test:contract
 ```
+
+Run `npm run test:integration` for database or transport changes and
+`npm run test:e2e` for complete workflow changes.
 
 For frontend changes, also run:
 
