@@ -51,7 +51,7 @@
     "test:unit": "vitest run --config vitest.config.mts",
     "test:coverage": "vitest run --config vitest.config.mts --coverage",
     "test:contract": "vitest run --config vitest.contract.config.mts",
-    "test:integration": "bash scripts/test-product-outbox-integration.sh",
+    "test:integration": "bash scripts/test-postgres-integration.sh",
     "test:e2e": "vitest run --config vitest.e2e.config.mts",
     "test:watch": "vitest --config vitest.config.mts"
   },
