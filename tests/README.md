@@ -9,6 +9,10 @@
 
 Run the lanes with `npm run test:unit`, `npm run test:contract`, `npm run test:integration`, and `npm run test:e2e`.
 
+Run `npm run test:integration:inventory-concurrency` to repeat the real
+PostgreSQL inventory concurrency matrix ten times against one disposable test
+database container. Every repetition cleans its rows before running.
+
 ## PostgreSQL and Kafka integration harness
 
 `npm run test:integration` starts disposable PostgreSQL and Redpanda containers on random localhost ports. It creates separate auth, product, inventory, cart, and order databases whose names end in `_test`, applies every real migration, runs the integration lane serially, and removes both containers even when a test fails.

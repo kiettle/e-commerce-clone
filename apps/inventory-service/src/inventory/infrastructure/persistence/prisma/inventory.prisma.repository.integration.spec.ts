@@ -5,6 +5,7 @@ import { HandleProductCreatedCommand } from '../../../application/dto/handle-pro
 import { calculateProductCreatedPayloadHash } from '../../../application/services/product-created-payload-hash';
 import { ConflictingProductEventError } from '../../../domain/errors/conflicting-product-event.error';
 import { FlashSaleReservationError } from '../../../domain/errors/flash-sale-reservation.error';
+import { InsufficientStockError } from '../../../domain/errors/insufficient-stock.error';
 import { InvalidStockOperationError } from '../../../domain/errors/invalid-stock-operation.error';
 import { ProductCreatedStockEvent } from '../../../domain/repositories/inventory.repository.port';
 import { PrismaInventoryRepository } from './inventory.prisma.repository';
@@ -13,7 +14,7 @@ import { PrismaService } from './prisma.service';
 const integrationDatabaseUrl = process.env.INVENTORY_INTEGRATION_DATABASE_URL;
 const describeWithDatabase = integrationDatabaseUrl ? describe : describe.skip;
 
-describeWithDatabase('PrismaInventoryRepository product event idempotency', () => {
+describeWithDatabase('PrismaInventoryRepository integration', () => {
   let prisma: PrismaClient;
   let repository: PrismaInventoryRepository;
 
@@ -133,68 +134,169 @@ describeWithDatabase('PrismaInventoryRepository product event idempotency', () =
     expect(await prisma.stockTransaction.count()).toBe(event.skus.length);
   });
 
-  it('limits 100 competing users to the five-unit sale allocation', async () => {
-    await seedSale(prisma, { normalQuantity: 100, saleLimit: 5 });
+  it('caps 100 concurrent users at the 20-unit sale allocation and commits every winner', async () => {
+    await seedSale(prisma, { normalQuantity: 1_000, saleLimit: 20 });
+    const operations = Array.from({ length: 100 }, (_, index) => saleOperation(index + 1));
+    const start = barrier(operations.length);
 
     const results = await Promise.allSettled(
-      Array.from({ length: 100 }, (_, index) => repository.reserveStock(saleOperation(index + 1))),
+      operations.map(async (operation) => {
+        await start.wait();
+        await repository.reserveStock(operation);
+        return operation;
+      }),
+    );
+    const successful = fulfilledValues(results);
+    const rejected = rejectedReasons(results);
+
+    expect(successful).toHaveLength(20);
+    expect(rejected).toHaveLength(80);
+    expect(
+      rejected.every(
+        (error) =>
+          error instanceof FlashSaleReservationError && error.code === 'FLASH_SALE_SOLD_OUT',
+      ),
+    ).toBe(true);
+    expect(await prisma.stockReservation.count({ where: { status: 'RESERVED' } })).toBe(20);
+    await expectCounters(prisma, {
+      available: 980,
+      normalReserved: 20,
+      saleReserved: 20,
+      sold: 0,
+    });
+
+    const commitStart = barrier(successful.length);
+    await Promise.all(
+      successful.map(async (operation) => {
+        await commitStart.wait();
+        await repository.commitStock(operation);
+      }),
     );
 
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(5);
-    expect(await prisma.stockReservation.count()).toBe(5);
-    await expectCounters(prisma, { available: 95, normalReserved: 5, saleReserved: 5, sold: 0 });
+    expect(await prisma.stockReservation.count({ where: { status: 'COMMITTED' } })).toBe(20);
+    expect(await prisma.stockTransaction.count({ where: { type: 'COMMIT' } })).toBe(20);
+    await expectCounters(prisma, {
+      available: 980,
+      normalReserved: 0,
+      saleReserved: 0,
+      sold: 20,
+    });
   });
 
-  it('allows one active sale claim when one user competes through multiple carts', async () => {
-    await seedSale(prisma, { normalQuantity: 10, saleLimit: 5 });
+  it('allows one claim when one user submits 20 carts concurrently', async () => {
+    await seedSale(prisma, { normalQuantity: 100, saleLimit: 20 });
+    const operations = Array.from({ length: 20 }, (_, index) =>
+      saleOperation(index + 1, { userId: 77n }),
+    );
+    const start = barrier(operations.length);
 
-    const results = await Promise.allSettled([
-      repository.reserveStock(saleOperation(1, { userId: 77n })),
-      repository.reserveStock(saleOperation(2, { userId: 77n })),
-    ]);
+    const results = await Promise.allSettled(
+      operations.map(async (operation) => {
+        await start.wait();
+        await repository.reserveStock(operation);
+      }),
+    );
+    const rejected = rejectedReasons(results);
 
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(rejected).toHaveLength(19);
+    expect(
+      rejected.every(
+        (error) =>
+          error instanceof FlashSaleReservationError && error.code === 'FLASH_SALE_LIMIT_REACHED',
+      ),
+    ).toBe(true);
     expect(await prisma.stockReservation.count()).toBe(1);
-    await expectCounters(prisma, { available: 9, normalReserved: 1, saleReserved: 1, sold: 0 });
+    await expectCounters(prisma, { available: 99, normalReserved: 1, saleReserved: 1, sold: 0 });
   });
 
-  it('uses the lower normal-stock limit', async () => {
-    await seedSale(prisma, { normalQuantity: 2, saleLimit: 5 });
+  it('caps 100 concurrent users at the five-unit base inventory', async () => {
+    await seedSale(prisma, { normalQuantity: 5, saleLimit: 20 });
+    const operations = Array.from({ length: 100 }, (_, index) => saleOperation(index + 1));
+    const start = barrier(operations.length);
 
     const results = await Promise.allSettled(
-      Array.from({ length: 10 }, (_, index) => repository.reserveStock(saleOperation(index + 1))),
+      operations.map(async (operation) => {
+        await start.wait();
+        await repository.reserveStock(operation);
+      }),
     );
+    const rejected = rejectedReasons(results);
 
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2);
-    await expectCounters(prisma, { available: 0, normalReserved: 2, saleReserved: 2, sold: 0 });
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(5);
+    expect(rejected).toHaveLength(95);
+    expect(rejected.every((error) => error instanceof InsufficientStockError)).toBe(true);
+    expect(await prisma.stockReservation.count()).toBe(5);
+    await expectCounters(prisma, { available: 0, normalReserved: 5, saleReserved: 5, sold: 0 });
   });
 
-  it('uses the lower sale allocation limit', async () => {
-    await seedSale(prisma, { normalQuantity: 10, saleLimit: 2 });
-
-    const results = await Promise.allSettled(
-      Array.from({ length: 10 }, (_, index) => repository.reserveStock(saleOperation(index + 1))),
-    );
-
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2);
-    await expectCounters(prisma, { available: 8, normalReserved: 2, saleReserved: 2, sold: 0 });
-  });
-
-  it('rolls back every item when one item cannot be reserved', async () => {
+  it('rolls back an available sale item and regular item when another sale item is sold out', async () => {
     await seedSale(prisma, { normalQuantity: 5, saleLimit: 5 });
+    await prisma.inventoryStock.createMany({
+      data: [
+        {
+          productId: 100n,
+          productSkuId: 1002n,
+          skuCode: 'KB-WHITE',
+          status: 'ACTIVE',
+          availableQuantity: 5,
+        },
+        {
+          productId: 100n,
+          productSkuId: 1003n,
+          skuCode: 'MOUSE-BLACK',
+          status: 'ACTIVE',
+          availableQuantity: 5,
+        },
+      ],
+    });
+    await prisma.flashSaleStock.create({
+      data: {
+        flashSaleId: 50n,
+        flashSaleItemId: 502n,
+        productSkuId: 1002n,
+        originalPrice: '100.00',
+        salePrice: '75.00',
+        stockLimit: 1,
+        soldQuantity: 1,
+        maxQuantityPerUser: 1,
+        startsAt: new Date(Date.now() - 60_000),
+        endsAt: new Date(Date.now() + 600_000),
+      },
+    });
 
     await expect(
       repository.reserveStock({
         ...saleOperation(1),
         items: [
           saleItem(),
-          { productSkuId: 9999n, quantity: 1, flashSaleId: null, flashSaleItemId: null },
+          {
+            productSkuId: 1002n,
+            quantity: 1,
+            flashSaleId: 50n,
+            flashSaleItemId: 502n,
+          },
+          { productSkuId: 1003n, quantity: 1, flashSaleId: null, flashSaleItemId: null },
         ],
       }),
-    ).rejects.toBeDefined();
+    ).rejects.toMatchObject({ code: 'FLASH_SALE_SOLD_OUT' });
 
     expect(await prisma.stockReservation.count()).toBe(0);
+    expect(await prisma.stockTransaction.count({ where: { type: 'RESERVE' } })).toBe(0);
+    expect(
+      await prisma.inventoryStock.findMany({
+        orderBy: { productSkuId: 'asc' },
+        select: { productSkuId: true, availableQuantity: true, reservedQuantity: true },
+      }),
+    ).toEqual([
+      { productSkuId: 1001n, availableQuantity: 5, reservedQuantity: 0 },
+      { productSkuId: 1002n, availableQuantity: 5, reservedQuantity: 0 },
+      { productSkuId: 1003n, availableQuantity: 5, reservedQuantity: 0 },
+    ]);
     await expectCounters(prisma, { available: 5, normalReserved: 0, saleReserved: 0, sold: 0 });
+    expect(
+      await prisma.flashSaleStock.findUniqueOrThrow({ where: { flashSaleItemId: 502n } }),
+    ).toMatchObject({ reservedQuantity: 0, soldQuantity: 1, stockLimit: 1 });
   });
 
   it('reserves and commits regular and sale items in one operation', async () => {
@@ -245,61 +347,90 @@ describeWithDatabase('PrismaInventoryRepository product event idempotency', () =
     });
   });
 
-  it('keeps counters consistent during concurrent reserve replay and release', async () => {
-    await seedSale(prisma, { normalQuantity: 5, saleLimit: 5 });
-    const operation = saleOperation(1);
-    await repository.reserveStock(operation);
+  it('keeps reserve, commit, and release idempotent across both terminal paths', async () => {
+    await seedSale(prisma, { normalQuantity: 10, saleLimit: 10 });
+    const committedOperation = saleOperation(1);
 
-    const [, release] = await Promise.allSettled([
-      repository.reserveStock(operation),
-      repository.releaseStock(operation),
-    ]);
+    await repository.reserveStock(committedOperation);
+    await repository.reserveStock(committedOperation);
+    await expectCounters(prisma, {
+      available: 9,
+      normalReserved: 1,
+      saleReserved: 1,
+      sold: 0,
+    });
 
-    expect(release.status).toBe('fulfilled');
-    await expect(repository.releaseStock(operation)).resolves.toBeUndefined();
-    await expectCounters(prisma, { available: 5, normalReserved: 0, saleReserved: 0, sold: 0 });
-    expect(await prisma.stockReservation.findFirstOrThrow()).toMatchObject({ status: 'RELEASED' });
-  });
-
-  it('commits sale stock atomically and treats repeated commit as a no-op', async () => {
-    await seedSale(prisma, { normalQuantity: 5, saleLimit: 5 });
-    const operation = saleOperation(1);
-    await repository.reserveStock(operation);
-
-    await repository.commitStock(operation);
-    await expect(repository.commitStock(operation)).resolves.toBeUndefined();
-
-    await expectCounters(prisma, { available: 4, normalReserved: 0, saleReserved: 0, sold: 1 });
-    expect(await prisma.stockReservation.findFirstOrThrow()).toMatchObject({ status: 'COMMITTED' });
-    await expect(repository.releaseStock(operation)).rejects.toBeInstanceOf(
+    await repository.commitStock(committedOperation);
+    await repository.commitStock(committedOperation);
+    await expect(repository.releaseStock(committedOperation)).rejects.toBeInstanceOf(
       InvalidStockOperationError,
     );
-  });
-
-  it('reports a sale that has not started', async () => {
-    await seedSale(prisma, {
-      normalQuantity: 5,
-      saleLimit: 5,
-      startsAt: new Date(Date.now() + 60_000),
-      endsAt: new Date(Date.now() + 120_000),
+    await expectCounters(prisma, {
+      available: 9,
+      normalReserved: 0,
+      saleReserved: 0,
+      sold: 1,
     });
 
-    await expect(repository.reserveStock(saleOperation(1))).rejects.toMatchObject({
+    const releasedOperation = saleOperation(2);
+    await repository.reserveStock(releasedOperation);
+    await repository.reserveStock(releasedOperation);
+    await repository.releaseStock(releasedOperation);
+    await repository.releaseStock(releasedOperation);
+    await expect(repository.commitStock(releasedOperation)).rejects.toBeInstanceOf(
+      InvalidStockOperationError,
+    );
+
+    await expectCounters(prisma, {
+      available: 9,
+      normalReserved: 0,
+      saleReserved: 0,
+      sold: 1,
+    });
+    expect(
+      await prisma.stockReservation.findMany({
+        orderBy: { cartId: 'asc' },
+        select: { cartId: true, status: true },
+      }),
+    ).toEqual([
+      { cartId: 1n, status: 'COMMITTED' },
+      { cartId: 2n, status: 'RELEASED' },
+    ]);
+    expect(await prisma.stockTransaction.count({ where: { type: 'RESERVE' } })).toBe(2);
+    expect(await prisma.stockTransaction.count({ where: { type: 'COMMIT' } })).toBe(1);
+    expect(await prisma.stockTransaction.count({ where: { type: 'RELEASE' } })).toBe(1);
+  });
+
+  it('uses inclusive start and exclusive end boundaries from one controlled database time', async () => {
+    const startsAt = new Date('2026-10-01T10:00:00.000Z');
+    const endsAt = new Date('2026-10-01T11:00:00.000Z');
+    await seedSale(prisma, { normalQuantity: 5, saleLimit: 5, startsAt, endsAt });
+    let databaseNow = new Date(startsAt.getTime() - 1);
+    const repositoryWithClock = new PrismaInventoryRepository(
+      prisma as unknown as PrismaService,
+      async () => databaseNow,
+    );
+
+    await expect(repositoryWithClock.reserveStock(saleOperation(1))).rejects.toMatchObject({
       code: 'FLASH_SALE_NOT_ACTIVE',
     });
-  });
 
-  it('reports a sale that has ended', async () => {
-    await seedSale(prisma, {
-      normalQuantity: 5,
-      saleLimit: 5,
-      startsAt: new Date(Date.now() - 120_000),
-      endsAt: new Date(Date.now() - 60_000),
-    });
+    databaseNow = startsAt;
+    await expect(repositoryWithClock.reserveStock(saleOperation(2))).resolves.toBeUndefined();
+    await repositoryWithClock.releaseStock(saleOperation(2));
 
-    await expect(repository.reserveStock(saleOperation(1))).rejects.toMatchObject({
+    databaseNow = new Date(endsAt.getTime() - 1);
+    await expect(repositoryWithClock.reserveStock(saleOperation(3))).resolves.toBeUndefined();
+    await repositoryWithClock.releaseStock(saleOperation(3));
+
+    databaseNow = endsAt;
+    await expect(repositoryWithClock.reserveStock(saleOperation(4))).rejects.toMatchObject({
       code: 'FLASH_SALE_ENDED',
     });
+
+    expect(await prisma.stockReservation.count({ where: { status: 'RESERVED' } })).toBe(0);
+    expect(await prisma.stockReservation.count({ where: { status: 'RELEASED' } })).toBe(2);
+    await expectCounters(prisma, { available: 5, normalReserved: 0, saleReserved: 0, sold: 0 });
   });
 
   it('reports sale inventory that is not initialized', async () => {
@@ -460,4 +591,32 @@ async function expectCounters(
   expect(sale.reservedQuantity).toBeGreaterThanOrEqual(0);
   expect(sale.soldQuantity).toBeGreaterThanOrEqual(0);
   expect(sale.reservedQuantity + sale.soldQuantity).toBeLessThanOrEqual(sale.stockLimit);
+}
+
+function fulfilledValues<T>(results: PromiseSettledResult<T>[]): T[] {
+  return results
+    .filter((result): result is PromiseFulfilledResult<T> => result.status === 'fulfilled')
+    .map(({ value }) => value);
+}
+
+function rejectedReasons<T>(results: PromiseSettledResult<T>[]): unknown[] {
+  return results
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .map(({ reason }) => reason as unknown);
+}
+
+function barrier(participants: number): { wait(): Promise<void> } {
+  let arrived = 0;
+  let release!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  return {
+    async wait(): Promise<void> {
+      arrived += 1;
+      if (arrived === participants) release();
+      await ready;
+    },
+  };
 }

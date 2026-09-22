@@ -149,5 +149,13 @@ run_prisma_command inventory generate INVENTORY_DATABASE_URL
 run_prisma_command cart generate CART_DATABASE_URL
 run_prisma_command order generate ORDER_DATABASE_URL
 
-echo '[integration] Running serial PostgreSQL integration tests...'
-npx vitest run --config vitest.integration.config.mts
+INTEGRATION_TEST_REPEAT="${INTEGRATION_TEST_REPEAT:-1}"
+if ! [[ "$INTEGRATION_TEST_REPEAT" =~ ^[1-9][0-9]*$ ]]; then
+  echo '[integration] INTEGRATION_TEST_REPEAT must be a positive integer.' >&2
+  exit 1
+fi
+
+for ((run = 1; run <= INTEGRATION_TEST_REPEAT; run += 1)); do
+  echo "[integration] Running serial integration tests (${run}/${INTEGRATION_TEST_REPEAT})..."
+  npx vitest run --config vitest.integration.config.mts "$@"
+done

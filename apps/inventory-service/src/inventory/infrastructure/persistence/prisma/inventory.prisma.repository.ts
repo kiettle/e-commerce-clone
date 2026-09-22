@@ -28,7 +28,12 @@ type TransactionClient = Prisma.TransactionClient;
 
 @Injectable()
 export class PrismaInventoryRepository implements InventoryRepositoryPort {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly readDatabaseTime: (
+      transaction: TransactionClient,
+    ) => Promise<Date> = currentDatabaseTime,
+  ) {}
 
   async initializeFromProductCreated(event: ProductCreatedStockEvent): Promise<void> {
     try {
@@ -117,9 +122,7 @@ export class PrismaInventoryRepository implements InventoryRepositoryPort {
         await lockFlashSaleStocks(transaction, saleItems);
         const saleStocks = await this.findFlashSaleStocks(transaction, saleItems);
         const saleStockByItemId = toSaleStockMap(saleStocks);
-        const [{ now }] = await transaction.$queryRaw<Array<{ now: Date }>>`
-          SELECT clock_timestamp() AS "now"
-        `;
+        const now = await this.readDatabaseTime(transaction);
 
         const claimedSaleItems =
           saleItems.length === 0
@@ -178,17 +181,14 @@ export class PrismaInventoryRepository implements InventoryRepositoryPort {
               WHERE "flash_sale_id" = ${item.flashSaleId}
                 AND "flash_sale_item_id" = ${item.flashSaleItemId}
                 AND "product_sku_id" = ${item.productSkuId}
-                AND "starts_at" <= clock_timestamp()
-                AND "ends_at" > clock_timestamp()
+                AND "starts_at" <= ${now}
+                AND "ends_at" > ${now}
                 AND "reserved_quantity" + "sold_quantity" + ${item.quantity} <= "quantity_limit"
               RETURNING "id"
             `;
             if (updatedSaleStock.length !== 1) {
-              const [{ currentTime }] = await transaction.$queryRaw<
-                Array<{ currentTime: Date }>
-              >`SELECT clock_timestamp() AS "currentTime"`;
               throw new FlashSaleReservationError(
-                saleStockByItemId.get(item.flashSaleItemId.toString())!.endsAt <= currentTime
+                saleStockByItemId.get(item.flashSaleItemId.toString())!.endsAt <= now
                   ? 'FLASH_SALE_ENDED'
                   : 'FLASH_SALE_SOLD_OUT',
               );
@@ -489,6 +489,13 @@ export class PrismaInventoryRepository implements InventoryRepositoryPort {
     });
     return reservation != null;
   }
+}
+
+async function currentDatabaseTime(transaction: TransactionClient): Promise<Date> {
+  const [{ now }] = await transaction.$queryRaw<Array<{ now: Date }>>`
+    SELECT clock_timestamp() AS "now"
+  `;
+  return now;
 }
 
 async function lockReservations(
