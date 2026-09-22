@@ -53,7 +53,8 @@
     "test:contract": "vitest run --config vitest.contract.config.mts",
     "test:integration": "bash scripts/test-postgres-integration.sh",
     "test:integration:inventory-concurrency": "INTEGRATION_TEST_REPEAT=10 bash scripts/test-postgres-integration.sh apps/inventory-service/src/inventory/infrastructure/persistence/prisma/inventory.prisma.repository.integration.spec.ts",
-    "test:e2e": "vitest run --config vitest.e2e.config.mts",
+    "test:e2e": "bash scripts/test-gateway-e2e.sh",
+    "test:e2e:product-outbox": "vitest run --config vitest.e2e.config.mts tests/e2e/product-flash-sale.e2e.spec.ts",
     "test:watch": "vitest --config vitest.config.mts"
   },
   "dependencies": {

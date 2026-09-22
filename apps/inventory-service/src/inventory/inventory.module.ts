@@ -32,7 +32,8 @@ import { PrismaFlashSaleStockRepository } from './infrastructure/persistence/pri
     PrismaFlashSaleStockRepository,
     {
       provide: INVENTORY_REPOSITORY,
-      useClass: PrismaInventoryRepository,
+      useFactory: (prisma: PrismaService) => new PrismaInventoryRepository(prisma),
+      inject: [PrismaService],
     },
     {
       provide: FLASH_SALE_STOCK_REPOSITORY,

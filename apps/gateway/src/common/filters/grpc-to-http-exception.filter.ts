@@ -29,14 +29,15 @@ export class GrpcToHttpExceptionFilter implements ExceptionFilter {
     const httpException = toHttpException(exception);
     const statusCode = httpException.getStatus();
     const exceptionResponse = httpException.getResponse();
-    const message =
+    const body: Record<string, unknown> =
       typeof exceptionResponse === 'string'
-        ? exceptionResponse
-        : (exceptionResponse as { message?: unknown }).message;
+        ? { message: exceptionResponse }
+        : { ...exceptionResponse };
 
     response.status(statusCode).json({
+      ...body,
       statusCode,
-      message: message ?? httpException.message,
+      message: body.message ?? httpException.message,
       error: HttpStatus[statusCode],
     });
   }

@@ -22,3 +22,19 @@ Kafka integration tests create a unique topic and consumer group for each case. 
 Use the helpers in `tests/integration/support/` to read guarded database URLs, create service-specific Prisma clients, clean tables in foreign-key-safe order, and disconnect all clients. The URL guard rejects non-local hosts and database names without the `_test` suffix. Integration tests must not read the normal development database URLs directly.
 
 Set `POSTGRES_TEST_IMAGE` or `REDPANDA_TEST_IMAGE` only when compatible test images are required. They default to `postgres:17-alpine` and `redpandadata/redpanda:v24.3.6`.
+
+## Full gateway E2E harness
+
+`npm run test:e2e` owns the complete stack lifecycle. It starts disposable
+PostgreSQL and Redpanda containers, creates and migrates five service databases,
+seeds an administrator and three customers, builds and starts all six services,
+waits for their health endpoints, and runs the gateway scenarios. Business
+actions use only gateway HTTP APIs. Database clients are used for controlled
+clock setup and cross-service assertions.
+
+The runner assigns random localhost ports, prints recent logs from every service
+and both containers when a failure occurs, then stops all processes and removes
+all containers. No development database or already-running service is used.
+
+The older focused product/outbox demonstration remains available as
+`npm run test:e2e:product-outbox`.
