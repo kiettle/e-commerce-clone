@@ -23,6 +23,26 @@ import { CheckoutAttemptRepositoryPort } from '../../../domain/repositories/chec
 import { PrismaCartRepository } from './cart.prisma.repository';
 import { PrismaService } from './prisma.service';
 
+interface ClaimedCheckoutAttemptRow {
+  id: string;
+  user_id: bigint;
+  cart_id: bigint;
+  idempotency_key: string;
+  request_hash: string;
+  request_hash_version: number;
+  items_snapshot: Prisma.JsonValue;
+  status: string;
+  order_id: bigint | null;
+  retry_count: number;
+  next_retry_at: Date | null;
+  last_error: string | null;
+  reconciliation_action: string | null;
+  lease_owner: string | null;
+  lease_until: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 @Injectable()
 export class PrismaCheckoutAttemptRepository implements CheckoutAttemptRepositoryPort {
   constructor(private readonly prisma: PrismaService) {}
@@ -44,6 +64,92 @@ export class PrismaCheckoutAttemptRepository implements CheckoutAttemptRepositor
     });
 
     return attempt ? toDomain(attempt) : null;
+  }
+
+  async claimDue(request: {
+    limit: number;
+    leaseOwner: string;
+    leaseUntil: Date;
+    maxAttempts: number;
+    now: Date;
+  }): Promise<CheckoutAttemptEntity[]> {
+    validateClaimRequest(request);
+
+    const rows = await this.prisma.$transaction((transaction) =>
+      transaction.$queryRaw<ClaimedCheckoutAttemptRow[]>(Prisma.sql`
+        WITH claimable AS MATERIALIZED (
+          SELECT "id"
+          FROM "checkout_attempts"
+          WHERE "status" NOT IN (
+              'COMPLETED'::"CheckoutStatus",
+              'FAILED'::"CheckoutStatus"
+            )
+            AND "reconciliation_action" IS NOT NULL
+            AND "retry_count" < ${request.maxAttempts}
+            AND ("next_retry_at" IS NULL OR "next_retry_at" <= ${request.now})
+            AND ("lease_until" IS NULL OR "lease_until" <= ${request.now})
+          ORDER BY COALESCE("next_retry_at", "created_at") ASC, "created_at" ASC, "id" ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT ${request.limit}
+        ), claimed AS (
+          UPDATE "checkout_attempts" AS attempt
+          SET
+            "lease_owner" = ${request.leaseOwner},
+            "lease_until" = ${request.leaseUntil},
+            "updated_at" = ${request.now}
+          FROM claimable
+          WHERE attempt."id" = claimable."id"
+          RETURNING attempt.*
+        )
+        SELECT *
+        FROM claimed
+        ORDER BY COALESCE("next_retry_at", "created_at") ASC, "created_at" ASC, "id" ASC
+      `),
+    );
+
+    return rows.map(toDomainFromRaw);
+  }
+
+  async finishClaim(
+    attemptId: string,
+    leaseOwner: string,
+    nextRetryAt: Date | null,
+  ): Promise<boolean> {
+    const result = await this.prisma.checkoutAttempt.updateMany({
+      where: { id: attemptId, leaseOwner },
+      data: {
+        nextRetryAt,
+        leaseOwner: null,
+        leaseUntil: null,
+      },
+    });
+
+    return result.count === 1;
+  }
+
+  async markClaimFailed(
+    attemptId: string,
+    leaseOwner: string,
+    error: string,
+    nextRetryAt: Date | null,
+  ): Promise<boolean> {
+    const result = await this.prisma.checkoutAttempt.updateMany({
+      where: {
+        id: attemptId,
+        leaseOwner,
+        status: { notIn: [CheckoutStatus.Completed, CheckoutStatus.Failed] },
+      },
+      data: {
+        status: CheckoutStatus.ReconciliationRequired,
+        retryCount: { increment: 1 },
+        nextRetryAt,
+        lastError: sanitizeError(error),
+        leaseOwner: null,
+        leaseUntil: null,
+      },
+    });
+
+    return result.count === 1;
   }
 
   async startOrLoad(
@@ -261,6 +367,8 @@ export class PrismaCheckoutAttemptRepository implements CheckoutAttemptRepositor
           reconciliationAction: null,
           lastError: null,
           nextRetryAt: null,
+          leaseOwner: null,
+          leaseUntil: null,
         },
       });
 
@@ -299,6 +407,8 @@ export class PrismaCheckoutAttemptRepository implements CheckoutAttemptRepositor
           reconciliationAction: null,
           lastError: error,
           nextRetryAt: null,
+          leaseOwner: null,
+          leaseUntil: null,
         },
       });
     });
@@ -354,11 +464,66 @@ function toDomain(attempt: PrismaCheckoutAttempt): CheckoutAttemptEntity {
     status: attempt.status as CheckoutStatus,
     orderId: attempt.orderId,
     retryCount: attempt.retryCount,
+    nextRetryAt: attempt.nextRetryAt,
     lastError: attempt.lastError,
     reconciliationAction: attempt.reconciliationAction as ReconciliationAction | null,
+    leaseOwner: attempt.leaseOwner,
+    leaseUntil: attempt.leaseUntil,
     createdAt: attempt.createdAt,
     updatedAt: attempt.updatedAt,
   });
+}
+
+function toDomainFromRaw(attempt: ClaimedCheckoutAttemptRow): CheckoutAttemptEntity {
+  return new CheckoutAttemptEntity({
+    id: attempt.id,
+    userId: attempt.user_id,
+    cartId: attempt.cart_id,
+    idempotencyKey: attempt.idempotency_key,
+    requestHash: attempt.request_hash,
+    requestHashVersion: attempt.request_hash_version,
+    itemsSnapshot: attempt.items_snapshot as unknown as CheckoutItemSnapshot[],
+    status: attempt.status as CheckoutStatus,
+    orderId: attempt.order_id,
+    retryCount: attempt.retry_count,
+    nextRetryAt: attempt.next_retry_at,
+    lastError: attempt.last_error,
+    reconciliationAction: attempt.reconciliation_action as ReconciliationAction | null,
+    leaseOwner: attempt.lease_owner,
+    leaseUntil: attempt.lease_until,
+    createdAt: attempt.created_at,
+    updatedAt: attempt.updated_at,
+  });
+}
+
+function validateClaimRequest(request: {
+  limit: number;
+  leaseOwner: string;
+  leaseUntil: Date;
+  maxAttempts: number;
+  now: Date;
+}): void {
+  if (!Number.isInteger(request.limit) || request.limit <= 0) {
+    throw new Error('Checkout claim limit must be a positive integer.');
+  }
+  if (!Number.isInteger(request.maxAttempts) || request.maxAttempts <= 0) {
+    throw new Error('Checkout maximum attempts must be a positive integer.');
+  }
+  if (!request.leaseOwner.trim()) {
+    throw new Error('Checkout lease owner must not be empty.');
+  }
+  if (
+    Number.isNaN(request.now.getTime()) ||
+    Number.isNaN(request.leaseUntil.getTime()) ||
+    request.leaseUntil <= request.now
+  ) {
+    throw new Error('Checkout lease must end after the claim time.');
+  }
+}
+
+function sanitizeError(error: string): string {
+  const sanitized = error.replaceAll('\0', '').replace(/\s+/g, ' ').trim();
+  return (sanitized || 'Checkout recovery failed.').slice(0, 1_000);
 }
 
 function isUniqueConstraintError(error: unknown): boolean {

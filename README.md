@@ -112,8 +112,9 @@ login through gateway
 If order creation fails after reservation, `cart-service` calls
 `ReleaseStock`. That is a compensating action, not an ACID transaction across
 services. Ambiguous outcomes and failed compensation are recorded on the
-checkout attempt for retry; there is not yet a background reconciliation
-worker.
+checkout attempt. A leased background worker resumes the stored action with
+bounded backoff, while the same checkout POST can still trigger an immediate
+retry.
 
 Each checkout intent requires a caller-generated UUID v4 `Idempotency-Key`.
 Reuse that key only when retrying the same cart checkout:
@@ -129,9 +130,9 @@ Reuse that key only when retrying the same cart checkout:
 - `409 Conflict` means the key belongs to another cart or the cart is already
   frozen by another checkout key.
 
-An API retry actively resumes the stored action. The service does not yet run a
-background reconciliation worker, so pending attempts do not advance without a
-caller retry.
+An API retry actively resumes the stored action. The reconciliation worker also
+claims due attempts in bounded batches, and expired leases can be reclaimed by
+another cart-service instance.
 
 ### Flash-sale checkout
 
@@ -331,7 +332,8 @@ Flash-sale delivery uses `FLASH_SALE_EVENTS_TOPIC` and
 `INVENTORY_FLASH_SALE_KAFKA_GROUP_ID`. Product outbox polling uses
 `PRODUCT_OUTBOX_POLL_INTERVAL_MS`, `PRODUCT_OUTBOX_BATCH_SIZE`,
 `PRODUCT_OUTBOX_LEASE_MS`, `PRODUCT_OUTBOX_SHUTDOWN_TIMEOUT_MS`, and
-`PRODUCT_OUTBOX_MAX_ATTEMPTS`; `.env.example` contains the local defaults.
+`PRODUCT_OUTBOX_MAX_ATTEMPTS`. Checkout recovery uses the corresponding
+`CHECKOUT_RECONCILIATION_*` settings; `.env.example` contains the local defaults.
 
 ## Basic Local Verification
 

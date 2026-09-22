@@ -78,6 +78,9 @@ describe('CheckoutCartUseCase', () => {
     attempts = {
       findById: vi.fn(),
       findByUserAndKey: vi.fn(),
+      claimDue: vi.fn(),
+      finishClaim: vi.fn(),
+      markClaimFailed: vi.fn(),
       startOrLoad: vi.fn(),
       markStockReserved: vi.fn(),
       markOrderConfirmed: vi.fn(),

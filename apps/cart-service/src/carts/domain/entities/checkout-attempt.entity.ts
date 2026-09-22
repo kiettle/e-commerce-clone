@@ -26,8 +26,11 @@ export interface CheckoutAttemptEntityProps {
   status: CheckoutStatus;
   orderId?: bigint | null;
   retryCount?: number;
+  nextRetryAt?: Date | null;
   lastError?: string | null;
   reconciliationAction?: ReconciliationAction | null;
+  leaseOwner?: string | null;
+  leaseUntil?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,8 +46,11 @@ export class CheckoutAttemptEntity {
   readonly status: CheckoutStatus;
   readonly orderId: bigint | null;
   readonly retryCount: number;
+  readonly nextRetryAt: Date | null;
   readonly lastError: string | null;
   readonly reconciliationAction: ReconciliationAction | null;
+  readonly leaseOwner: string | null;
+  readonly leaseUntil: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -59,8 +65,11 @@ export class CheckoutAttemptEntity {
     this.status = props.status;
     this.orderId = props.orderId ?? null;
     this.retryCount = props.retryCount ?? 0;
+    this.nextRetryAt = props.nextRetryAt ?? null;
     this.lastError = props.lastError ?? null;
     this.reconciliationAction = props.reconciliationAction ?? null;
+    this.leaseOwner = props.leaseOwner ?? null;
+    this.leaseUntil = props.leaseUntil ?? null;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

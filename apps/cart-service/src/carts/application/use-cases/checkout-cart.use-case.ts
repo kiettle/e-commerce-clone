@@ -49,10 +49,10 @@ export class CheckoutCartUseCase {
       );
     }
 
-    return this.resume(attempt);
+    return this.resumeAttempt(attempt);
   }
 
-  private async resume(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
+  async resumeAttempt(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
     if (attempt.status === CheckoutStatus.Completed) {
       return this.completedResult(attempt);
     }
@@ -106,7 +106,7 @@ export class CheckoutCartUseCase {
       return this.createOrder(updatedAttempt);
     }
 
-    return this.resume(updatedAttempt);
+    return this.resumeAttempt(updatedAttempt);
   }
 
   private async checkOrder(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
@@ -132,7 +132,7 @@ export class CheckoutCartUseCase {
     }
 
     const confirmed = await this.attempts.markOrderConfirmed(attempt.id, existingOrder.orderId);
-    return this.resume(confirmed);
+    return this.resumeAttempt(confirmed);
   }
 
   private async createOrder(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
@@ -159,7 +159,7 @@ export class CheckoutCartUseCase {
     }
 
     const confirmed = await this.attempts.markOrderConfirmed(attempt.id, order.orderId);
-    return this.resume(confirmed);
+    return this.resumeAttempt(confirmed);
   }
 
   private async startCompensation(
@@ -172,7 +172,7 @@ export class CheckoutCartUseCase {
       return this.releaseStock(updatedAttempt, failureMessage);
     }
 
-    return this.resume(updatedAttempt);
+    return this.resumeAttempt(updatedAttempt);
   }
 
   private async commitStock(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {
@@ -197,7 +197,7 @@ export class CheckoutCartUseCase {
     }
 
     const committed = await this.attempts.markStockCommitted(attempt.id);
-    return this.resume(committed);
+    return this.resumeAttempt(committed);
   }
 
   private async completeCart(attempt: CheckoutAttemptEntity): Promise<CheckoutCartResult> {

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   CHECKOUT_FAILURE_LOGGER,
   CheckoutFailureLoggerPort,
@@ -36,6 +37,7 @@ import { NestCheckoutFailureLogger } from './infrastructure/logging/nest-checkou
 import { PrismaCartRepository } from './infrastructure/persistence/prisma/cart.prisma.repository';
 import { PrismaCheckoutAttemptRepository } from './infrastructure/persistence/prisma/checkout-attempt.prisma.repository';
 import { PrismaService } from './infrastructure/persistence/prisma/prisma.service';
+import { CheckoutReconciliationWorker } from './infrastructure/workers/checkout-reconciliation.worker';
 import { CartItemsController } from './presentation/http/cart-items.controller';
 import { CartsController } from './presentation/http/carts.controller';
 import { CheckoutsController } from './presentation/http/checkouts.controller';
@@ -123,6 +125,15 @@ import { CheckoutsController } from './presentation/http/checkouts.controller';
         ORDER_CREATOR,
         CHECKOUT_FAILURE_LOGGER,
       ],
+    },
+    {
+      provide: CheckoutReconciliationWorker,
+      useFactory: (
+        attempts: CheckoutAttemptRepositoryPort,
+        checkout: CheckoutCartUseCase,
+        config: ConfigService,
+      ) => new CheckoutReconciliationWorker(attempts, checkout, config),
+      inject: [CHECKOUT_ATTEMPT_REPOSITORY, CheckoutCartUseCase, ConfigService],
     },
   ],
 })

@@ -21,6 +21,7 @@ The current tree also contains the checkout reliability foundation:
 - replay-safe order creation keyed by checkout ID;
 - order lookup after an ambiguous create response;
 - persisted reconciliation actions and HTTP `202` pending responses;
+- a leased reconciliation worker with bounded retries and expired-lease recovery;
 - idempotent inventory commit after order confirmation;
 - an owner-scoped checkout-status endpoint for polling durable state;
 - reproducible scripts for replay, conflict, lost-response, and migration
@@ -28,8 +29,8 @@ The current tree also contains the checkout reliability foundation:
 - focused unit tests around auth, inventory, order, checkout, persistence
   adapters, and gateway checkout mapping.
 
-This foundation still needs integration proof and an automatic worker before it
-should be described as fully recoverable.
+This foundation still needs full-stack checkout recovery proof before it should
+be described as production complete.
 
 ## Priority 1: Finish Checkout Reliability
 
@@ -37,11 +38,7 @@ Goal: retries and ambiguous failures converge without manual API replay.
 
 - Update the frontend to generate one UUID v4 `Idempotency-Key` per checkout
   intent and reuse it for retries.
-- Implement a reconciliation worker that leases due attempts and executes the
-  persisted action: reserve stock, check order, commit stock, release stock, or
-  complete cart.
-- Add bounded retry/backoff behavior and a terminal policy for attempts that
-  cannot be repaired automatically.
+- Add full-stack recovery tests across the real inventory and order services.
 - Decide whether committed and released reservations need expiration or
   archival.
 - Keep worker concurrency safe with database-backed claiming; do not rely on an

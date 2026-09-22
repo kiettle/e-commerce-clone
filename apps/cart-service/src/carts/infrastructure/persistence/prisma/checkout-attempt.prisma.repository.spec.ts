@@ -205,6 +205,54 @@ describe('PrismaCheckoutAttemptRepository successful transitions', () => {
       }),
     });
   });
+
+  it('releases only the current worker lease with its retry time', async () => {
+    const prisma = {
+      checkoutAttempt: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const repository = new PrismaCheckoutAttemptRepository(prisma as unknown as PrismaService);
+    const nextRetryAt = new Date('2026-09-22T08:00:05.000Z');
+
+    await expect(repository.finishClaim('checkout-1', 'worker-1', nextRetryAt)).resolves.toBe(true);
+    expect(prisma.checkoutAttempt.updateMany).toHaveBeenCalledWith({
+      where: { id: 'checkout-1', leaseOwner: 'worker-1' },
+      data: { nextRetryAt, leaseOwner: null, leaseUntil: null },
+    });
+  });
+
+  it('does not let a stale worker persist a recovery failure', async () => {
+    const prisma = {
+      checkoutAttempt: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    const repository = new PrismaCheckoutAttemptRepository(prisma as unknown as PrismaService);
+
+    await expect(
+      repository.markClaimFailed(
+        'checkout-1',
+        'stale-worker',
+        'Database\0 unavailable',
+        new Date('2026-09-22T08:00:05.000Z'),
+      ),
+    ).resolves.toBe(false);
+    expect(prisma.checkoutAttempt.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'checkout-1',
+        leaseOwner: 'stale-worker',
+        status: { notIn: [CheckoutStatus.Completed, CheckoutStatus.Failed] },
+      },
+      data: expect.objectContaining({
+        status: CheckoutStatus.ReconciliationRequired,
+        retryCount: { increment: 1 },
+        lastError: 'Database unavailable',
+        leaseOwner: null,
+        leaseUntil: null,
+      }),
+    });
+  });
 });
 
 function transitionPrisma(attempt: ReturnType<typeof databaseAttempt>) {

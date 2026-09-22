@@ -15,6 +15,9 @@ describe('GetCheckoutStatusUseCase', () => {
     attempts = {
       findById: vi.fn(),
       findByUserAndKey: vi.fn(),
+      claimDue: vi.fn(),
+      finishClaim: vi.fn(),
+      markClaimFailed: vi.fn(),
       startOrLoad: vi.fn(),
       markStockReserved: vi.fn(),
       markOrderConfirmed: vi.fn(),
@@ -37,9 +40,7 @@ describe('GetCheckoutStatusUseCase', () => {
   it('returns not found for a checkout owned by another user', async () => {
     attempts.findById.mockResolvedValue(attempt({ userId: 11n }));
 
-    await expect(useCase.execute(10n, checkoutId)).rejects.toBeInstanceOf(
-      CheckoutNotFoundError,
-    );
+    await expect(useCase.execute(10n, checkoutId)).rejects.toBeInstanceOf(CheckoutNotFoundError);
   });
 
   it('returns the same not-found error for an unknown checkout', async () => {

@@ -6,12 +6,32 @@ export const CHECKOUT_ATTEMPT_REPOSITORY = Symbol(
   'CHECKOUT_ATTEMPT_REPOSITORY',
 );
 
+export interface ClaimCheckoutAttemptsRequest {
+  limit: number;
+  leaseOwner: string;
+  leaseUntil: Date;
+  maxAttempts: number;
+  now: Date;
+}
+
 export interface CheckoutAttemptRepositoryPort {
   findById(checkoutId: string): Promise<CheckoutAttemptEntity | null>;
   findByUserAndKey(
     userId: bigint,
     idempotencyKey: string,
   ): Promise<CheckoutAttemptEntity | null>;
+  claimDue(request: ClaimCheckoutAttemptsRequest): Promise<CheckoutAttemptEntity[]>;
+  finishClaim(
+    attemptId: string,
+    leaseOwner: string,
+    nextRetryAt: Date | null,
+  ): Promise<boolean>;
+  markClaimFailed(
+    attemptId: string,
+    leaseOwner: string,
+    error: string,
+    nextRetryAt: Date | null,
+  ): Promise<boolean>;
   startOrLoad(
     userId: bigint,
     cartId: bigint,

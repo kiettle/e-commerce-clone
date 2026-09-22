@@ -195,6 +195,128 @@ describe('database-backed checkout idempotency', () => {
     }
   });
 
+  it('lets two reconciliation workers claim disjoint attempts', async () => {
+    const attemptIds = await createPendingAttempts(20, 2_000n);
+    const now = new Date('2026-09-22T08:00:00.000Z');
+    const leaseUntil = new Date('2026-09-22T08:00:30.000Z');
+
+    const [workerA, workerB] = await Promise.all([
+      attempts.claimDue({
+        limit: 10,
+        leaseOwner: 'worker-a',
+        leaseUntil,
+        maxAttempts: 5,
+        now,
+      }),
+      attempts.claimDue({
+        limit: 10,
+        leaseOwner: 'worker-b',
+        leaseUntil,
+        maxAttempts: 5,
+        now,
+      }),
+    ]);
+
+    const claimedA = new Set(workerA.map(({ id }) => id));
+    const claimedB = new Set(workerB.map(({ id }) => id));
+    expect(workerA).toHaveLength(10);
+    expect(workerB).toHaveLength(10);
+    expect([...claimedA].some((id) => claimedB.has(id))).toBe(false);
+    expect(new Set([...claimedA, ...claimedB])).toEqual(new Set(attemptIds));
+
+    await expect(
+      attempts.claimDue({
+        limit: 20,
+        leaseOwner: 'worker-c',
+        leaseUntil,
+        maxAttempts: 5,
+        now,
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it('protects an active lease and reclaims it after expiry', async () => {
+    const [attemptId] = await createPendingAttempts(1, 3_000n);
+    const claimed = await attempts.claimDue({
+      limit: 1,
+      leaseOwner: 'worker-a',
+      leaseUntil: new Date('2026-09-22T08:00:30.000Z'),
+      maxAttempts: 5,
+      now: new Date('2026-09-22T08:00:00.000Z'),
+    });
+    expect(claimed.map(({ id }) => id)).toEqual([attemptId]);
+
+    await expect(
+      attempts.claimDue({
+        limit: 1,
+        leaseOwner: 'worker-b',
+        leaseUntil: new Date('2026-09-22T08:00:40.000Z'),
+        maxAttempts: 5,
+        now: new Date('2026-09-22T08:00:10.000Z'),
+      }),
+    ).resolves.toEqual([]);
+
+    const reclaimed = await attempts.claimDue({
+      limit: 1,
+      leaseOwner: 'worker-b',
+      leaseUntil: new Date('2026-09-22T08:01:10.000Z'),
+      maxAttempts: 5,
+      now: new Date('2026-09-22T08:00:40.000Z'),
+    });
+    expect(reclaimed).toHaveLength(1);
+    expect(reclaimed[0]).toMatchObject({ id: attemptId, leaseOwner: 'worker-b' });
+  });
+
+  it('claims only due attempts below the automatic retry limit', async () => {
+    const [futureId, exhaustedId] = await createPendingAttempts(2, 4_000n);
+    await clients.cart.checkoutAttempt.update({
+      where: { id: futureId },
+      data: {
+        status: 'RECONCILIATION_REQUIRED',
+        nextRetryAt: new Date('2026-09-22T08:01:00.000Z'),
+      },
+    });
+    await clients.cart.checkoutAttempt.update({
+      where: { id: exhaustedId },
+      data: {
+        status: 'RECONCILIATION_REQUIRED',
+        retryCount: 5,
+        nextRetryAt: null,
+        lastError: 'Maximum automatic recovery attempts reached.',
+      },
+    });
+
+    await expect(
+      attempts.claimDue({
+        limit: 10,
+        leaseOwner: 'worker-a',
+        leaseUntil: new Date('2026-09-22T08:00:30.000Z'),
+        maxAttempts: 5,
+        now: new Date('2026-09-22T08:00:00.000Z'),
+      }),
+    ).resolves.toEqual([]);
+
+    const due = await attempts.claimDue({
+      limit: 10,
+      leaseOwner: 'worker-a',
+      leaseUntil: new Date('2026-09-22T08:02:30.000Z'),
+      maxAttempts: 5,
+      now: new Date('2026-09-22T08:02:00.000Z'),
+    });
+    expect(due.map(({ id }) => id)).toEqual([futureId]);
+  });
+
+  async function createPendingAttempts(count: number, firstUserId: bigint): Promise<string[]> {
+    const created: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const userId = firstUserId + BigInt(index);
+      const { cartId } = await createCart(userId, 20_000n + BigInt(index));
+      const checkout = await attempts.startOrLoad(userId, cartId, randomUUID());
+      created.push(checkout.id);
+    }
+    return created;
+  }
+
   async function createCart(
     userId: bigint,
     productSkuId = 5_001n,

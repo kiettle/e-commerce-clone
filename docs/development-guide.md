@@ -91,8 +91,8 @@ When changing code:
 
 These rules provide replay safety, but they are not a distributed ACID
 transaction. The integration suite proves the current PostgreSQL, Kafka, and
-service boundaries; a background checkout reconciliation worker is still
-future work.
+service boundaries. The checkout reconciliation worker claims due attempts
+with database leases and resumes the stored recovery action.
 
 ## Checkout Retry Contract
 
@@ -113,11 +113,11 @@ outcomes never release inventory.
 progress within the current checkout workflow. Lease ownership, retry timing,
 request hashes, snapshots, and reconciliation actions are internal fields.
 
-There is no automatic reconciliation worker yet. HTTP `202` means the work is
-durably recoverable, not that it will advance without a caller retry. After an
-order is confirmed, checkout commits stock before completing the cart. An
-uncertain commit stores `COMMIT_STOCK` and retries that idempotent operation;
-it does not create another order or release inventory.
+HTTP `202` means the work is durably recoverable. A caller retry may resume it
+immediately, and the reconciliation worker retries due attempts with bounded
+backoff. After an order is confirmed, checkout commits stock before completing
+the cart. An uncertain commit stores `COMMIT_STOCK` and retries that idempotent
+operation; it does not create another order or release inventory.
 
 ## Testing Style
 
