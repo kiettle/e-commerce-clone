@@ -38,3 +38,7 @@ all containers. No development database or already-running service is used.
 
 The older focused product/outbox demonstration remains available as
 `npm run test:e2e:product-outbox`.
+
+Flash-sale load profiles live under `tests/load/` and run with k6 rather than
+Vitest. See [load/README.md](load/README.md) for fixture setup, profile commands,
+thresholds, and the mandatory post-run database verification.

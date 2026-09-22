@@ -403,6 +403,19 @@ limits with:
 npm run test:e2e
 ```
 
+Run the short flash-sale k6 smoke profile against an isolated running stack with:
+
+```bash
+npm run load:flash-sale:smoke
+```
+
+The concurrency, retry-storm, and read-heavy profiles are intended for local or
+dedicated environments. They prepare authentication tokens and carts before
+measurement and always run cross-database invariants afterward. Configuration,
+thresholds, and machine-specific Markdown baselines are documented in
+[tests/load/README.md](tests/load/README.md). Local results are development
+baselines, not production-capacity claims.
+
 The E2E command briefly stops and restarts the local Redpanda container. It uses
 unique Kafka topics, disposable PostgreSQL databases, dynamically allocated
 application ports, and bounded state polling. Topics, databases, processes, and

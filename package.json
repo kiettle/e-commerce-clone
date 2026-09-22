@@ -55,6 +55,10 @@
     "test:integration:inventory-concurrency": "INTEGRATION_TEST_REPEAT=10 bash scripts/test-postgres-integration.sh apps/inventory-service/src/inventory/infrastructure/persistence/prisma/inventory.prisma.repository.integration.spec.ts",
     "test:e2e": "bash scripts/test-gateway-e2e.sh",
     "test:e2e:product-outbox": "vitest run --config vitest.e2e.config.mts tests/e2e/product-flash-sale.e2e.spec.ts",
+    "load:flash-sale:smoke": "bash scripts/run-flash-sale-load-test.sh smoke",
+    "load:flash-sale:concurrency": "bash scripts/run-flash-sale-load-test.sh concurrency",
+    "load:flash-sale:retry-storm": "bash scripts/run-flash-sale-load-test.sh retry-storm",
+    "load:flash-sale:reads": "bash scripts/run-flash-sale-load-test.sh reads",
     "test:watch": "vitest --config vitest.config.mts"
   },
   "dependencies": {
