@@ -193,6 +193,13 @@ npm run test:contract
 Run `npm run test:integration` for database or transport changes and
 `npm run test:e2e` for complete workflow changes.
 
+GitHub Actions uses the same four lanes. Keep the required check names stable:
+`static`, `unit-contract`, `integration`, and `e2e`. CI must install from the
+committed lockfiles with `npm ci`, provide all configuration through environment
+variables, and retain JUnit, coverage, and failure diagnostics as artifacts.
+The normal CI path runs only the k6 smoke profile; larger load profiles belong
+in a dedicated environment.
+
 For frontend changes, also run:
 
 ```bash

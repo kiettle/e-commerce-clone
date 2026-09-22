@@ -328,6 +328,29 @@ unit tests and need no Docker. `*.contract.spec.ts` verifies transport contracts
 HTTP, and gRPC. Every runner prints its lane and only discovers its own naming
 pattern. See [tests/README.md](tests/README.md) for the conventions.
 
+## Continuous Integration
+
+GitHub Actions runs four required checks from a fresh checkout:
+
+- `static` installs with `npm ci`, generates every Prisma client, lints and
+  builds all services, then installs, lints, and builds the frontend.
+- `unit-contract` runs unit coverage and contract tests and uploads JUnit and
+  HTML/JSON coverage artifacts.
+- `integration` starts isolated PostgreSQL and Redpanda containers, applies the
+  real migrations, and runs the repository, Kafka, and gRPC integration suite.
+- `e2e` starts the six built services and their infrastructure, runs the gateway
+  workflows, and then runs only the short k6 smoke profile.
+
+Integration and E2E resources use a run-specific suffix and are removed by
+shell traps on success or failure. Failed jobs upload service and infrastructure
+logs. CI supplies database URLs and a test-only JWT secret through environment
+variables, so no manually created `.env` file is required.
+
+Configure `main` branch protection to require the `static`, `unit-contract`,
+`integration`, and `e2e` checks. The concurrency, retry-storm, and read-heavy
+load profiles remain explicit local or dedicated-environment commands; normal
+pull requests run only `load:flash-sale:smoke`.
+
 Flash-sale delivery uses `FLASH_SALE_EVENTS_TOPIC` and
 `INVENTORY_FLASH_SALE_KAFKA_GROUP_ID`. Product outbox polling uses
 `PRODUCT_OUTBOX_POLL_INTERVAL_MS`, `PRODUCT_OUTBOX_BATCH_SIZE`,

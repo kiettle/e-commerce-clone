@@ -8,6 +8,7 @@ REDPANDA_CONTAINER="ecommerce-gateway-e2e-redpanda-${RUN_ID}"
 POSTGRES_IMAGE="${POSTGRES_TEST_IMAGE:-postgres:17-alpine}"
 REDPANDA_IMAGE="${REDPANDA_TEST_IMAGE:-redpandadata/redpanda:v24.3.6}"
 LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ecommerce-gateway-e2e.XXXXXX")"
+ARTIFACT_DIR="${E2E_ARTIFACT_DIR:-}"
 
 AUTH_DATABASE_NAME="ecommerce_auth_${RUN_ID}_test"
 PRODUCT_DATABASE_NAME="ecommerce_product_${RUN_ID}_test"
@@ -62,6 +63,22 @@ print_failure_logs() {
   docker logs --tail 80 "$REDPANDA_CONTAINER" >&2 2>/dev/null || true
 }
 
+capture_logs() {
+  if [[ -z "$ARTIFACT_DIR" ]]; then
+    return
+  fi
+
+  mkdir -p "$ARTIFACT_DIR"
+  for service in "${SERVICE_NAMES[@]}"; do
+    local log_file="$LOG_DIR/${service}.log"
+    if [[ -f "$log_file" ]]; then
+      cp "$log_file" "$ARTIFACT_DIR/${service}.log"
+    fi
+  done
+  docker logs "$POSTGRES_CONTAINER" >"$ARTIFACT_DIR/postgres.log" 2>&1 || true
+  docker logs "$REDPANDA_CONTAINER" >"$ARTIFACT_DIR/redpanda.log" 2>&1 || true
+}
+
 cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
@@ -74,6 +91,7 @@ cleanup() {
     stop_process "${SERVICE_PIDS[$index]}"
   done
 
+  capture_logs
   docker rm -f "$REDPANDA_CONTAINER" >/dev/null 2>&1 || true
   docker rm -f "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
   rm -rf "$LOG_DIR"
@@ -254,7 +272,7 @@ COMMON_KAFKA_ENV=(
 echo '[gateway-e2e] Starting all six built services...'
 start_service auth-service \
   NODE_ENV=test PORT="$AUTH_HTTP_PORT" AUTH_GRPC_URL="0.0.0.0:${AUTH_GRPC_PORT}" \
-  AUTH_DATABASE_URL="$AUTH_DATABASE_URL" JWT_SECRET='gateway-e2e-secret'
+  AUTH_DATABASE_URL="$AUTH_DATABASE_URL" JWT_SECRET="${JWT_SECRET:-gateway-e2e-secret}"
 AUTH_PID="$LAST_PID"
 
 start_service product-service \
@@ -306,6 +324,18 @@ export E2E_PRODUCT_TOPIC="$PRODUCT_TOPIC"
 export E2E_FLASH_SALE_TOPIC="$FLASH_SALE_TOPIC"
 
 echo '[gateway-e2e] Running gateway business scenarios...'
-npx vitest run --config vitest.e2e.config.mts tests/e2e/gateway-stack.e2e.spec.ts
+npx vitest run --config vitest.e2e.config.mts tests/e2e/gateway-stack.e2e.spec.ts "$@"
+
+if [[ "${RUN_LOAD_SMOKE:-0}" == "1" ]]; then
+  require_command k6
+  echo '[gateway-e2e] Running the flash-sale load smoke profile...'
+  LOAD_GATEWAY_URL="$E2E_GATEWAY_URL" \
+  LOAD_ADMIN_EMAIL='admin.e2e@example.test' \
+  LOAD_ADMIN_PASSWORD='password123' \
+  LOAD_VUS="${LOAD_VUS:-3}" \
+  LOAD_STOCK_LIMIT="${LOAD_STOCK_LIMIT:-5}" \
+  LOAD_BASELINE_PATH="${ARTIFACT_DIR:-$LOG_DIR}/load-smoke-baseline.md" \
+    bash scripts/run-flash-sale-load-test.sh smoke
+fi
 
 echo '[gateway-e2e] Full gateway E2E suite passed.'

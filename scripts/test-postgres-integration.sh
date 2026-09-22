@@ -13,10 +13,22 @@ PRODUCT_DATABASE_NAME="ecommerce_product_${RUN_ID}_test"
 INVENTORY_DATABASE_NAME="ecommerce_inventory_${RUN_ID}_test"
 CART_DATABASE_NAME="ecommerce_cart_${RUN_ID}_test"
 ORDER_DATABASE_NAME="ecommerce_order_${RUN_ID}_test"
+ARTIFACT_DIR="${INTEGRATION_ARTIFACT_DIR:-}"
+
+capture_logs() {
+  if [[ -z "$ARTIFACT_DIR" ]]; then
+    return
+  fi
+
+  mkdir -p "$ARTIFACT_DIR"
+  docker logs "$CONTAINER_NAME" >"$ARTIFACT_DIR/postgres.log" 2>&1 || true
+  docker logs "$REDPANDA_CONTAINER_NAME" >"$ARTIFACT_DIR/redpanda.log" 2>&1 || true
+}
 
 cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
+  capture_logs
   docker rm -f "$REDPANDA_CONTAINER_NAME" >/dev/null 2>&1 || true
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   exit "$exit_code"
