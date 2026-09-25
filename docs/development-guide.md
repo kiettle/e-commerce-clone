@@ -219,6 +219,9 @@ Keep documentation intentionally small:
 - `docs/development-guide.md`: stable contribution and architecture rules.
 - `docs/roadmap.md`: current gaps, priorities, acceptance criteria, and handoff
   context for future prompts.
+- `docs/*-runbook.md`: safe, ID-scoped operational diagnosis and recovery.
+- `docs/flash-sale-verification-report.md`: the reproducible sprint evidence
+  and its environment-specific performance baseline.
 - `docs/assets/`: images referenced by maintained documents.
 
 Do not add separate status reviews, interview notes, weekly plans, or testing

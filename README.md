@@ -93,6 +93,9 @@ Reusing an event ID for different data is rejected. Product/outbox persistence
 and inventory/processed-marker persistence each use one local transaction.
 Operational inspection and failed-event replay are documented in the
 [product outbox recovery runbook](docs/product-outbox-runbook.md).
+The full sprint evidence and cross-service incident procedures are in the
+[flash-sale verification report](docs/flash-sale-verification-report.md) and
+[flash-sale operations runbook](docs/flash-sale-runbook.md).
 
 ### Authenticated checkout
 

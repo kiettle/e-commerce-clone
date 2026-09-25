@@ -144,6 +144,7 @@ jobs:
         env:
           E2E_ARTIFACT_DIR: artifacts/e2e
           RUN_LOAD_SMOKE: 1
+          K6_SUMMARY_TREND_STATS: avg,min,med,p(90),p(95),p(99),max
         run: npm run test:e2e -- --reporter=default --reporter=junit --outputFile.junit=artifacts/junit/e2e.xml
       - name: Upload E2E JUnit report
         if: ${{ !cancelled() }}
