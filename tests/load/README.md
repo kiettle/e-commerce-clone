@@ -49,6 +49,9 @@ second ramp-up, a twenty second steady stage, and a five second ramp-down.
 npm run load:flash-sale:concurrency
 ```
 
+The latest machine-specific 100-buyer result is recorded in
+[`baselines/concurrency.md`](baselines/concurrency.md).
+
 The retry storm sends three checkout requests per user with the same
 idempotency key. The verifier requires one order and one committed reservation
 per user.

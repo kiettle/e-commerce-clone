@@ -58,7 +58,11 @@ This is a local or CI development baseline. It is not a production-capacity clai
 | Unexpected technical failure rate | ${format((technicalRate ?? 0) * 100, '%')} | < 1% |
 | Unexpected HTTP 5xx | ${metric('unexpected_5xx', 'count') ?? 0} | 0 |
 | Business conflicts | ${metric('business_conflicts', 'count') ?? 0} | Functional outcome |
+| Sold-out conflicts | ${metric('sold_out_conflicts', 'count') ?? 0} | Profile dependent |
+| Purchase-limit conflicts | ${metric('purchase_limit_conflicts', 'count') ?? 0} | Profile dependent |
 | Successful checkout users | ${metric('checkout_user_successes', 'count') ?? 0} | Profile dependent |
+| Request rate | ${format(metric('http_reqs', 'rate'), ' requests/s')} | Informational |
+| Checkout p50 | ${format(metric('checkout_duration', 'med'), ' ms')} | Informational |
 | Checkout p95 | ${format(metric('checkout_duration', 'p(95)'), ' ms')} | < 1,000 ms |
 | Checkout p99 | ${format(metric('checkout_duration', 'p(99)'), ' ms')} | < 2,000 ms |
 | Active-sale read p95 | ${format(metric('sale_read_duration', 'p(95)'), ' ms')} | < 500 ms |
@@ -72,10 +76,16 @@ This is a local or CI development baseline. It is not a production-capacity clai
 | Completed checkouts | ${invariants.completedCheckouts} |
 | Orders | ${invariants.orders} |
 | Committed reservations | ${invariants.committedReservations} |
+| Sold-out responses | ${invariants.soldOutConflicts} |
+| Purchase-limit responses | ${invariants.purchaseLimitConflicts} |
+| Duplicate orders | ${invariants.duplicateOrderCount} |
+| Users purchasing twice | ${invariants.duplicateBuyerPurchaseCount} |
 | Sale sold quantity | ${invariants.saleSoldQuantity} |
 | Sale reserved quantity | ${invariants.saleReservedQuantity} |
 | Normal available quantity | ${invariants.normalAvailableQuantity} |
 | Normal reserved quantity | ${invariants.normalReservedQuantity} |
+| Negative normal inventory rows | ${invariants.negativeNormalInventoryRows} |
+| Invalid sale counter rows | ${invariants.invalidSaleCounterRows} |
 
 Command: \`npm run load:flash-sale:${profile}\`
 `;

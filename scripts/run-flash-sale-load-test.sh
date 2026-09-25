@@ -38,6 +38,7 @@ fi
 
 echo "[load] Running $PROFILE profile against $(node -e 'const f=require(process.argv[1]); process.stdout.write(f.gatewayUrl)' "$FIXTURE_PATH")..."
 set +e
+export K6_SUMMARY_TREND_STATS="${K6_SUMMARY_TREND_STATS:-avg,min,med,p(90),p(95),p(99),max}"
 LOAD_PROFILE="$PROFILE" \
 LOAD_FIXTURE="$FIXTURE_PATH" \
 LOAD_RESULT_PATH="$RESULT_PATH" \

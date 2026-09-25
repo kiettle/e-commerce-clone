@@ -51,6 +51,11 @@ interface CheckoutResponse {
   cart: CartResponse;
 }
 
+interface CheckoutPendingResponse {
+  checkoutId: string;
+  status: 'RECONCILIATION_REQUIRED';
+}
+
 interface ErrorResponse {
   code?: string;
   message?: string | string[];
@@ -140,7 +145,7 @@ describe.sequential('full gateway stack', () => {
     await expectSaleEventProcessed(happySale.id);
   });
 
-  it('checks out a sale item and replays the completed checkout idempotently', async () => {
+  it('recovers an order whose successful create response was lost', async () => {
     await makeSaleActive(happySale.id);
 
     const added = await addItem(customerOneToken, happyProduct.skus[0].id);
@@ -151,6 +156,61 @@ describe.sequential('full gateway stack', () => {
       priceSource: 'FLASH_SALE',
       flashSaleId: happySale.id,
       flashSaleItemId: happySale.items[0].id,
+    });
+
+    const key = randomUUID();
+    const first = await checkout<CheckoutPendingResponse>(customerOneToken, added.id, key);
+    expect(first.status).toBe(202);
+    expect(first.body.status).toBe('RECONCILIATION_REQUIRED');
+
+    const pendingAttempt = await databases.cart.checkoutAttempt.findUniqueOrThrow({
+      where: { id: first.body.checkoutId },
+    });
+    expect(pendingAttempt).toMatchObject({
+      status: 'RECONCILIATION_REQUIRED',
+      reconciliationAction: 'CHECK_ORDER',
+      orderId: null,
+    });
+
+    const persistedOrders = await databases.order.order.findMany({
+      where: { checkoutId: first.body.checkoutId },
+    });
+    expect(persistedOrders).toHaveLength(1);
+    const pendingReservations = await databases.inventory.stockReservation.findMany({
+      where: { checkoutId: first.body.checkoutId },
+    });
+    expect(pendingReservations).toHaveLength(1);
+    expect(pendingReservations[0].status).toBe('RESERVED');
+    expect(
+      await databases.inventory.stockTransaction.count({
+        where: { cartId: BigInt(added.id), type: 'RELEASE' },
+      }),
+    ).toBe(0);
+
+    const recovered = await checkout(customerOneToken, added.id, key);
+    expect(recovered.status).toBe(200);
+    expect(recovered.body.checkoutId).toBe(first.body.checkoutId);
+    expect(recovered.body.orderId).toBe(Number(persistedOrders[0].id));
+    await verifyCompletedCheckout(recovered.body.checkoutId);
+    await verifySaleCounters(happySale.items[0].id);
+  });
+
+  it('checks out a sale item and replays the completed checkout idempotently', async () => {
+    const category = await createCategory('happy-checkout');
+    const product = await createProduct(category.id, 'Happy Path Keyboard', [
+      { skuCode: uniqueCode('HAPPY'), price: 89.9, quantity: 10 },
+    ]);
+    const sale = await createScheduledSale('Happy Path Sale', product.skus[0].id, 49.9, 5);
+    await makeSaleActive(sale.id);
+
+    const added = await addItem(customerOneToken, product.skus[0].id);
+    expect(added.items).toHaveLength(1);
+    expect(added.items[0]).toMatchObject({
+      price: 49.9,
+      regularPrice: 89.9,
+      priceSource: 'FLASH_SALE',
+      flashSaleId: sale.id,
+      flashSaleItemId: sale.items[0].id,
     });
 
     const key = randomUUID();
@@ -172,14 +232,14 @@ describe.sequential('full gateway stack', () => {
     expect(order.items).toHaveLength(1);
     expect(order.items[0]).toMatchObject({
       priceSource: 'FLASH_SALE',
-      flashSaleId: BigInt(happySale.id),
-      flashSaleItemId: BigInt(happySale.items[0].id),
+      flashSaleId: BigInt(sale.id),
+      flashSaleItemId: BigInt(sale.items[0].id),
     });
     expect(order.items[0].price.toFixed(2)).toBe('49.90');
     expect(order.items[0].regularPrice?.toFixed(2)).toBe('89.90');
 
     await verifyCompletedCheckout(first.body.checkoutId);
-    await verifySaleCounters(happySale.items[0].id);
+    await verifySaleCounters(sale.items[0].id);
     await verifyNoNegativeInventoryCounters();
   });
 
@@ -420,12 +480,12 @@ describe.sequential('full gateway stack', () => {
     return response.body;
   }
 
-  function checkout(
+  function checkout<T = CheckoutResponse>(
     token: string,
     cartId: number,
     key: string,
-  ): Promise<ApiResponse<CheckoutResponse>> {
-    return request<CheckoutResponse>(`/api/carts/${cartId}/checkout`, {
+  ): Promise<ApiResponse<T>> {
+    return request<T>(`/api/carts/${cartId}/checkout`, {
       method: 'POST',
       token,
       headers: { 'Idempotency-Key': key },

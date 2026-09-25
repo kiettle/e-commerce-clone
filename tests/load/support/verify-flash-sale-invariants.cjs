@@ -118,10 +118,20 @@ async function main() {
     const unexpected5xx = metricValue(k6Result, 'unexpected_5xx', 'count');
     const k6SuccessfulUsers = metricValue(k6Result, 'checkout_user_successes', 'count');
     const k6BusinessConflicts = metricValue(k6Result, 'business_conflicts', 'count');
+    const k6SoldOutConflicts = metricValue(k6Result, 'sold_out_conflicts', 'count');
+    const k6PurchaseLimitConflicts = metricValue(
+      k6Result,
+      'purchase_limit_conflicts',
+      'count',
+    );
     assertEqual(0, unexpected5xx, 'unexpected HTTP 5xx count');
     if (!isReadProfile) {
       assertEqual(expectedSuccesses, k6SuccessfulUsers, 'k6 successful-user count');
       assertEqual(expectedConflicts, k6BusinessConflicts, 'k6 business-conflict count');
+    }
+    if (fixture.profile === 'concurrency') {
+      assertEqual(expectedConflicts, k6SoldOutConflicts, 'k6 sold-out conflict count');
+      assertEqual(0, k6PurchaseLimitConflicts, 'k6 purchase-limit conflict count');
     }
     if (fixture.profile === 'retry-storm') {
       assertEqual(0, metricValue(k6Result, 'retry_mismatches', 'count'), 'retry mismatch count');
@@ -142,6 +152,9 @@ async function main() {
     assertEqual(0n, negativeNormal[0].count, 'negative normal inventory rows');
     assertEqual(0n, negativeSale[0].count, 'invalid sale inventory rows');
 
+    const duplicateOrderCount = orders.length - uniqueOrderCheckouts;
+    const duplicateBuyerPurchaseCount = orders.length - uniqueOrderUsers;
+
     const verification = {
       profile: fixture.profile,
       verifiedAt: new Date().toISOString(),
@@ -150,10 +163,16 @@ async function main() {
       orders: orders.length,
       committedReservations: committed.length,
       businessConflicts: expectedConflicts,
+      soldOutConflicts: k6SoldOutConflicts,
+      purchaseLimitConflicts: k6PurchaseLimitConflicts,
+      duplicateOrderCount,
+      duplicateBuyerPurchaseCount,
       saleSoldQuantity: saleStock.soldQuantity,
       saleReservedQuantity: saleStock.reservedQuantity,
       normalAvailableQuantity: normalStock.availableQuantity,
       normalReservedQuantity: normalStock.reservedQuantity,
+      negativeNormalInventoryRows: Number(negativeNormal[0].count),
+      invalidSaleCounterRows: Number(negativeSale[0].count),
       invariantStatus: 'PASSED',
     };
     await writeFile(invariantPath, `${JSON.stringify(verification, null, 2)}\n`);

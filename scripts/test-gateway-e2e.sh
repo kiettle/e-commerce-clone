@@ -291,7 +291,7 @@ INVENTORY_PID="$LAST_PID"
 
 start_service order-service \
   NODE_ENV=test PORT="$ORDER_HTTP_PORT" ORDER_GRPC_URL="0.0.0.0:${ORDER_GRPC_PORT}" \
-  ORDER_DATABASE_URL="$ORDER_DATABASE_URL"
+  ORDER_DATABASE_URL="$ORDER_DATABASE_URL" ORDER_DEMO_LOST_RESPONSE_AFTER=0
 ORDER_PID="$LAST_PID"
 
 start_service cart-service \
@@ -299,7 +299,7 @@ start_service cart-service \
   PRODUCT_SERVICE_URL="http://127.0.0.1:${PRODUCT_PORT}" \
   INVENTORY_GRPC_URL="127.0.0.1:${INVENTORY_GRPC_PORT}" \
   ORDER_GRPC_URL="127.0.0.1:${ORDER_GRPC_PORT}" \
-  CHECKOUT_RECONCILIATION_POLL_INTERVAL_MS=250 \
+  CHECKOUT_RECONCILIATION_POLL_INTERVAL_MS=60000 \
   CHECKOUT_RECONCILIATION_BATCH_SIZE=20 CHECKOUT_RECONCILIATION_LEASE_MS=5000 \
   CHECKOUT_RECONCILIATION_SHUTDOWN_TIMEOUT_MS=2000 CHECKOUT_RECONCILIATION_MAX_ATTEMPTS=5
 CART_PID="$LAST_PID"
@@ -324,18 +324,26 @@ export E2E_PRODUCT_TOPIC="$PRODUCT_TOPIC"
 export E2E_FLASH_SALE_TOPIC="$FLASH_SALE_TOPIC"
 
 echo '[gateway-e2e] Running gateway business scenarios...'
-npx vitest run --config vitest.e2e.config.mts tests/e2e/gateway-stack.e2e.spec.ts "$@"
+npx vitest run --config vitest.e2e.config.mts "$@"
 
-if [[ "${RUN_LOAD_SMOKE:-0}" == "1" ]]; then
+LOAD_PROFILE_TO_RUN="${RUN_LOAD_PROFILE:-}"
+if [[ -z "$LOAD_PROFILE_TO_RUN" && "${RUN_LOAD_SMOKE:-0}" == "1" ]]; then
+  LOAD_PROFILE_TO_RUN=smoke
+fi
+
+if [[ -n "$LOAD_PROFILE_TO_RUN" ]]; then
   require_command k6
-  echo '[gateway-e2e] Running the flash-sale load smoke profile...'
+  if [[ "$LOAD_PROFILE_TO_RUN" == "smoke" ]]; then
+    export LOAD_VUS="${LOAD_VUS:-3}"
+    export LOAD_STOCK_LIMIT="${LOAD_STOCK_LIMIT:-5}"
+  fi
+  LOAD_BASELINE_OUTPUT="${LOAD_BASELINE_PATH:-${ARTIFACT_DIR:-$LOG_DIR}/load-${LOAD_PROFILE_TO_RUN}-baseline.md}"
+  echo "[gateway-e2e] Running the flash-sale ${LOAD_PROFILE_TO_RUN} load profile..."
   LOAD_GATEWAY_URL="$E2E_GATEWAY_URL" \
   LOAD_ADMIN_EMAIL='admin.e2e@example.test' \
   LOAD_ADMIN_PASSWORD='password123' \
-  LOAD_VUS="${LOAD_VUS:-3}" \
-  LOAD_STOCK_LIMIT="${LOAD_STOCK_LIMIT:-5}" \
-  LOAD_BASELINE_PATH="${ARTIFACT_DIR:-$LOG_DIR}/load-smoke-baseline.md" \
-    bash scripts/run-flash-sale-load-test.sh smoke
+  LOAD_BASELINE_PATH="$LOAD_BASELINE_OUTPUT" \
+    bash scripts/run-flash-sale-load-test.sh "$LOAD_PROFILE_TO_RUN"
 fi
 
 echo '[gateway-e2e] Full gateway E2E suite passed.'

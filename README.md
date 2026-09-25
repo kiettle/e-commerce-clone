@@ -320,6 +320,7 @@ npm run test:unit
 npm run test:contract
 npm run test:integration
 npm run test:e2e
+npm run test:all
 npm run frontend:build
 npm run frontend:lint
 ```
@@ -432,8 +433,11 @@ npm run test:e2e
 Run the short flash-sale k6 smoke profile against an isolated running stack with:
 
 ```bash
-npm run load:flash-sale:smoke
+npm run load:smoke
 ```
+
+Run the 100-buyer concurrency profile with `npm run load:flash-sale`. The
+profile-specific command `npm run load:flash-sale:concurrency` remains available.
 
 The concurrency, retry-storm, and read-heavy profiles are intended for local or
 dedicated environments. They prepare authentication tokens and carts before
@@ -442,15 +446,16 @@ thresholds, and machine-specific Markdown baselines are documented in
 [tests/load/README.md](tests/load/README.md). Local results are development
 baselines, not production-capacity claims.
 
-The E2E command briefly stops and restarts the local Redpanda container. It uses
-unique Kafka topics, disposable PostgreSQL databases, dynamically allocated
-application ports, and bounded state polling. Topics, databases, processes, and
-temporary files are removed whether the command passes or fails.
+The E2E command briefly stops and restarts its disposable Redpanda container.
+It uses unique Kafka topics, disposable PostgreSQL databases, dynamically
+allocated application ports, and bounded state polling. Topics, databases,
+processes, and temporary files are removed whether the command passes or fails.
 
 The sale verification creates and schedules real sales, waits with bounded
 database polling for Kafka projections, and drives cart, inventory, order, and
 product services together. It checks the happy path, expiry, broker delay,
-duplicate delivery, concurrent sold-out contention, and the one-per-user rule.
+duplicate delivery, concurrent sold-out contention, the one-per-user rule, and
+recovery when an order commits before its gRPC response is lost.
 
 Example sale creation and scheduling requests through the gateway:
 

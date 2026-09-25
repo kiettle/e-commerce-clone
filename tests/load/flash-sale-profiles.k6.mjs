@@ -20,6 +20,8 @@ const productReadDuration = new Trend('product_read_duration', true);
 const checkoutResponses = new Counter('checkout_responses');
 const checkoutUserSuccesses = new Counter('checkout_user_successes');
 const businessConflicts = new Counter('business_conflicts');
+const soldOutConflicts = new Counter('sold_out_conflicts');
+const purchaseLimitConflicts = new Counter('purchase_limit_conflicts');
 const technicalFailures = new Counter('technical_failures');
 const unexpected5xx = new Counter('unexpected_5xx');
 const retryMismatches = new Counter('retry_mismatches');
@@ -132,6 +134,11 @@ function classifyCheckout(response) {
     (code === 'FLASH_SALE_SOLD_OUT' || code === 'FLASH_SALE_LIMIT_REACHED')
   ) {
     businessConflicts.add(1, { code });
+    if (code === 'FLASH_SALE_SOLD_OUT') {
+      soldOutConflicts.add(1);
+    } else {
+      purchaseLimitConflicts.add(1);
+    }
     technicalFailureRate.add(false);
     check(response, { 'business conflict has a stable code': () => Boolean(code) });
     return 'business-conflict';
@@ -278,6 +285,8 @@ function summaryLine(data) {
     `profile=${profile}`,
     `checkout_users=${metric('checkout_user_successes', 'count')}`,
     `business_conflicts=${metric('business_conflicts', 'count')}`,
+    `sold_out_conflicts=${metric('sold_out_conflicts', 'count')}`,
+    `purchase_limit_conflicts=${metric('purchase_limit_conflicts', 'count')}`,
     `technical_failures=${metric('technical_failures', 'count')}`,
     `unexpected_5xx=${metric('unexpected_5xx', 'count')}`,
     `checkout_p95_ms=${metric('checkout_duration', 'p(95)')}`,

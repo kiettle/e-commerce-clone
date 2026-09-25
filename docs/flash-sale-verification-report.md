@@ -28,16 +28,21 @@ and infrastructure ports were allocated dynamically on loopback.
 
 The E2E services used this recovery configuration:
 
-| Setting                            |    Value |
-| ---------------------------------- | -------: |
-| Product outbox poll interval       |   250 ms |
-| Product outbox batch size          |       20 |
-| Product outbox lease               | 5,000 ms |
-| Product outbox maximum attempts    |        5 |
-| Checkout recovery poll interval    |   250 ms |
-| Checkout recovery batch size       |       20 |
-| Checkout recovery lease            | 5,000 ms |
-| Checkout recovery maximum attempts |        5 |
+| Setting                            |     Value |
+| ---------------------------------- | --------: |
+| Product outbox poll interval       |    250 ms |
+| Product outbox batch size          |        20 |
+| Product outbox lease               |  5,000 ms |
+| Product outbox maximum attempts    |         5 |
+| Checkout recovery poll interval    | 60,000 ms |
+| Checkout recovery batch size       |        20 |
+| Checkout recovery lease            |  5,000 ms |
+| Checkout recovery maximum attempts |         5 |
+
+The checkout worker performs its initial empty pass at startup and then waits
+60 seconds in this harness. That makes the explicit lost-response HTTP retry
+deterministic; worker scheduling and lease recovery are covered separately by
+unit and PostgreSQL integration tests.
 
 The main correctness datasets were:
 
@@ -47,18 +52,20 @@ The main correctness datasets were:
 - 20 concurrent order creates for one checkout identity.
 - 50 due outbox events claimed by two workers.
 - Three prepared customers, base stock 100, and sale limit 5 for load smoke.
+- 100 prepared customers, base stock 1,000, and sale limit 20 for the full-stack concurrency profile.
 
 ## Automated suites
 
-| Suite                     | Result |                        Cases |              Duration |
-| ------------------------- | ------ | ---------------------------: | --------------------: |
-| Unit                      | Pass   |        373 tests in 59 files |                2.56 s |
-| Contract                  | Pass   |          18 tests in 4 files |                0.40 s |
-| PostgreSQL integration    | Pass   |          83 tests in 8 files |      9.89 s test time |
-| Kafka integration         | Pass   |            5 tests in 1 file |     18.64 s test time |
-| Complete integration lane | Pass   |          88 tests in 9 files |     31.94 s wall time |
-| Gateway E2E               | Pass   |                  7 scenarios |      6.54 s wall time |
-| Load smoke                | Pass   | 3 VUs, 3 checkout iterations | 0.12 s measured stage |
+| Suite                     | Result |                                 Cases |               Duration |
+| ------------------------- | ------ | ------------------------------------: | ---------------------: |
+| Unit                      | Pass   |                 373 tests in 59 files |                 2.60 s |
+| Contract                  | Pass   |                   18 tests in 4 files |                 0.39 s |
+| PostgreSQL integration    | Pass   |                   83 tests in 8 files |       8.50 s test time |
+| Kafka integration         | Pass   |                     5 tests in 1 file |      18.48 s test time |
+| Complete integration lane | Pass   |                   88 tests in 9 files |      29.10 s test time |
+| Gateway E2E               | Pass   |                           8 scenarios |      13.44 s test time |
+| Load smoke                | Pass   |          3 VUs, 3 checkout iterations |  0.12 s measured stage |
+| Load concurrency          | Pass   | 100 buyers, 20 purchases, 80 sold out | 30.80 s measured stage |
 
 Unit coverage passed the configured thresholds:
 
@@ -71,20 +78,22 @@ Unit coverage passed the configured thresholds:
 
 ## Correctness evidence
 
-| Evidence                            | Observed result                                                                                                                               |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Maximum concurrent sale reservation | 100 calls started from a barrier; exactly 20 reserved against sale limit 20                                                                   |
-| Successful versus sold-out          | 20 successful, 80 `FLASH_SALE_SOLD_OUT`                                                                                                       |
-| Counters after reservation          | Normal available 980, normal reserved 20, sale reserved 20, sale sold 0                                                                       |
-| Counters after commit               | Normal available 980, normal reserved 0, sale reserved 0, sale sold 20                                                                        |
-| Base-stock cap                      | Base stock 5 produced exactly 5 successes and 95 insufficient-stock results; no negative counter                                              |
-| One-per-user claim                  | One customer using 20 carts produced 1 reservation and 19 `FLASH_SALE_LIMIT_REACHED` results                                                  |
-| Duplicate orders                    | 20 concurrent creates returned one order ID, one order row, and one item set; duplicate order count 0                                         |
-| Duplicate active sale claims        | One active claim for the 20-cart same-user race; duplicate claim count 0                                                                      |
-| Outbox worker competition           | Two workers claimed all 50 due rows in disjoint batches; duplicate active outbox claims 0                                                     |
-| Product duplicate delivery          | One outbox row was published twice with the same event ID; inventory retained one processed marker and one initialization transaction per SKU |
-| Sale duplicate delivery             | One sale outbox row was published twice; inventory retained one processed marker and one `FlashSaleStock` row per sale item                   |
-| Smoke post-run state                | 3 completed checkouts, 3 orders, 3 committed reservations, sale sold 3, sale reserved 0, normal available 97, normal reserved 0               |
+| Evidence                            | Observed result                                                                                                                                    |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Maximum concurrent sale reservation | 100 calls started from a barrier; exactly 20 reserved against sale limit 20                                                                        |
+| Successful versus sold-out          | 20 successful, 80 `FLASH_SALE_SOLD_OUT`                                                                                                            |
+| Counters after reservation          | Normal available 980, normal reserved 20, sale reserved 20, sale sold 0                                                                            |
+| Counters after commit               | Normal available 980, normal reserved 0, sale reserved 0, sale sold 20                                                                             |
+| Base-stock cap                      | Base stock 5 produced exactly 5 successes and 95 insufficient-stock results; no negative counter                                                   |
+| One-per-user claim                  | One customer using 20 carts produced 1 reservation and 19 `FLASH_SALE_LIMIT_REACHED` results                                                       |
+| Duplicate orders                    | 20 concurrent creates returned one order ID, one order row, and one item set; duplicate order count 0                                              |
+| Duplicate active sale claims        | One active claim for the 20-cart same-user race; duplicate claim count 0                                                                           |
+| Outbox worker competition           | Two workers claimed all 50 due rows in disjoint batches; duplicate active outbox claims 0                                                          |
+| Product duplicate delivery          | One outbox row was published twice with the same event ID; inventory retained one processed marker and one initialization transaction per SKU      |
+| Sale duplicate delivery             | One sale outbox row was published twice; inventory retained one processed marker and one `FlashSaleStock` row per sale item                        |
+| Smoke post-run state                | 3 completed checkouts, 3 orders, 3 committed reservations, sale sold 3, sale reserved 0, normal available 97, normal reserved 0                    |
+| Full-stack checkout concurrency     | 100 buyers produced exactly 20 completed checkouts and 80 `FLASH_SALE_SOLD_OUT` responses, with 20 orders, 0 duplicate orders, and 0 repeat buyers |
+| Lost order response                 | Order persisted before `UNAVAILABLE`; checkout stored `CHECK_ORDER`, stock remained reserved, and the same key resumed the original order          |
 
 The concurrency assertions are database-backed and begin from barriers. They do
 not infer correctness from sequential promises or mocked repositories.
@@ -108,33 +117,52 @@ outside the measured checkout stage.
 | Database connection usage       |               Not instrumented in this baseline |
 | Kafka publication lag           | Not independently instrumented in this baseline |
 
-The broker-outage E2E scenario completed in 2.91 seconds, including stopping
+The recorded broker-outage E2E scenario completed in 4.70 seconds, including stopping
 Redpanda, committing product and sale API requests, restarting the broker, and
 waiting for both inventory projections. That duration is an end-to-end test
 time and must not be presented as Kafka publication lag.
 
 This baseline ran all six services, PostgreSQL, Redpanda, and k6 on one laptop.
-The sample contains three checkout requests, uses a single broker and one
-region, and has no production network latency. It detects contract and gross
-performance regressions; it cannot establish production capacity.
+The smoke sample contains three checkout requests. A separate concurrency run
+prepared 100 authenticated buyers and exercised one checkout per buyer:
+
+| Metric                          |               Result |
+| ------------------------------- | -------------------: |
+| Request rate                    | 3.24 requests/second |
+| Checkout p50                    |             59.65 ms |
+| Checkout p95                    |            513.37 ms |
+| Checkout p99                    |            627.06 ms |
+| Successful purchases            |                   20 |
+| Sold-out business conflicts     |                   80 |
+| Unexpected technical error rate |                0.00% |
+| Duplicate orders                |                    0 |
+| Users purchasing twice          |                    0 |
+| Negative inventory rows         |                    0 |
+
+The committed machine-specific result is in
+[`tests/load/baselines/concurrency.md`](../tests/load/baselines/concurrency.md).
+Both runs use a single broker and region with no production network latency.
+They detect contract, correctness, and gross performance regressions; they
+cannot establish production capacity.
 
 ## Guarantee-to-test traceability
 
-| Implemented guarantee                                                                                                 | Automated evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Roles originate from token validation and only administrators mutate products or sales                                | [`roles.guard.spec.ts`](../apps/gateway/src/common/guards/roles.guard.spec.ts), [`grpc-client-failure-injection.contract.spec.ts`](../tests/contract/grpc-client-failure-injection.contract.spec.ts), and the E2E administrator scenario in [`gateway-stack.e2e.spec.ts`](../tests/e2e/gateway-stack.e2e.spec.ts)                                                                                                                                                                             |
-| Product, SKUs, and the outbox event commit atomically                                                                 | Atomic success and rollback cases in [`product.prisma.repository.integration.spec.ts`](../apps/product-service/src/catalog/infrastructure/persistence/prisma/product.prisma.repository.integration.spec.ts)                                                                                                                                                                                                                                                                                   |
-| Stored event identity and bytes remain stable across retries                                                          | [`protobuf-product-event-serializer.spec.ts`](../apps/product-service/src/catalog/infrastructure/messaging/protobuf-product-event-serializer.spec.ts) and the stable-envelope Kafka case in [`kafka-event-delivery.integration.spec.ts`](../tests/integration/kafka-event-delivery.integration.spec.ts)                                                                                                                                                                                       |
-| Outbox workers claim disjoint batches, fence stale workers, reclaim expired work, and expose the publish crash window | The 50-event, lease, fencing, and republish cases in [`product-outbox.prisma.repository.integration.spec.ts`](../apps/product-service/src/catalog/infrastructure/persistence/prisma/product-outbox.prisma.repository.integration.spec.ts)                                                                                                                                                                                                                                                     |
-| Product and sale duplicate events are no-ops only for identical payloads                                              | [`inventory.prisma.repository.integration.spec.ts`](../apps/inventory-service/src/inventory/infrastructure/persistence/prisma/inventory.prisma.repository.integration.spec.ts), [`flash-sale-stock.prisma.repository.integration.spec.ts`](../apps/inventory-service/src/inventory/infrastructure/persistence/prisma/flash-sale-stock.prisma.repository.integration.spec.ts), and [`kafka-event-delivery.integration.spec.ts`](../tests/integration/kafka-event-delivery.integration.spec.ts) |
-| Scheduling and its sale outbox event are atomic, immutable, and overlap-safe                                          | [`flash-sale.prisma.repository.integration.spec.ts`](../apps/product-service/src/flash-sales/infrastructure/persistence/prisma/flash-sale.prisma.repository.integration.spec.ts) and [`flash-sale.entity.spec.ts`](../apps/product-service/src/flash-sales/domain/entities/flash-sale.entity.spec.ts)                                                                                                                                                                                         |
-| Effective sale pricing is selected server-side and stored in the cart snapshot                                        | [`get-product-sku-snapshot.use-case.spec.ts`](../apps/product-service/src/catalog/application/use-cases/get-product-sku-snapshot.use-case.spec.ts), [`add-cart-item.use-case.spec.ts`](../apps/cart-service/src/carts/application/use-cases/add-cart-item.use-case.spec.ts), and the sale E2E scenario                                                                                                                                                                                        |
-| Checkout and order identities converge under concurrent retries                                                       | The 20-call order and checkout-attempt races in [`order-checkout-idempotency.integration.spec.ts`](../tests/integration/order-checkout-idempotency.integration.spec.ts)                                                                                                                                                                                                                                                                                                                       |
-| Unknown inventory/order outcomes retain a durable next action and avoid destructive compensation                      | [`checkout-recovery.scenarios.spec.ts`](../apps/cart-service/src/carts/application/use-cases/checkout-recovery.scenarios.spec.ts), [`checkout-cart.use-case.spec.ts`](../apps/cart-service/src/carts/application/use-cases/checkout-cart.use-case.spec.ts), and [`checkout-reconciliation.worker.spec.ts`](../apps/cart-service/src/carts/infrastructure/workers/checkout-reconciliation.worker.spec.ts)                                                                                      |
-| Sale allocation, normal stock, one-per-user claims, mixed-cart rollback, boundaries, and lifecycle retries are atomic | The real PostgreSQL concurrency matrix in [`inventory.prisma.repository.integration.spec.ts`](../apps/inventory-service/src/inventory/infrastructure/persistence/prisma/inventory.prisma.repository.integration.spec.ts)                                                                                                                                                                                                                                                                      |
-| Repeated checkout returns the same order and regular checkout remains unaffected                                      | Sale replay and regular regression scenarios in [`gateway-stack.e2e.spec.ts`](../tests/e2e/gateway-stack.e2e.spec.ts)                                                                                                                                                                                                                                                                                                                                                                         |
-| Product and sale creation survive broker outage and inventory catches up                                              | Broker-outage scenario in [`gateway-stack.e2e.spec.ts`](../tests/e2e/gateway-stack.e2e.spec.ts)                                                                                                                                                                                                                                                                                                                                                                                               |
-| Schema constraints, indexes, compatibility, and repeatable migrations remain valid                                    | [`postgres-migrations.integration.spec.ts`](../tests/integration/postgres-migrations.integration.spec.ts), [`protobuf-backward-compatibility.contract.spec.ts`](../tests/contract/protobuf-backward-compatibility.contract.spec.ts), and the inventory/order proto contract suites                                                                                                                                                                                                            |
+| Implemented guarantee                                                                                                 | Automated evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Roles originate from token validation and only administrators mutate products or sales                                | [`roles.guard.spec.ts`](../apps/gateway/src/common/guards/roles.guard.spec.ts), [`grpc-client-failure-injection.contract.spec.ts`](../tests/contract/grpc-client-failure-injection.contract.spec.ts), and the E2E administrator scenario in [`gateway-stack.e2e.spec.ts`](../tests/e2e/gateway-stack.e2e.spec.ts)                                                                                                                                                                                                                 |
+| Product, SKUs, and the outbox event commit atomically                                                                 | Atomic success and rollback cases in [`product.prisma.repository.integration.spec.ts`](../apps/product-service/src/catalog/infrastructure/persistence/prisma/product.prisma.repository.integration.spec.ts)                                                                                                                                                                                                                                                                                                                       |
+| Stored event identity and bytes remain stable across retries                                                          | [`protobuf-product-event-serializer.spec.ts`](../apps/product-service/src/catalog/infrastructure/messaging/protobuf-product-event-serializer.spec.ts) and the stable-envelope Kafka case in [`kafka-event-delivery.integration.spec.ts`](../tests/integration/kafka-event-delivery.integration.spec.ts)                                                                                                                                                                                                                           |
+| Outbox workers claim disjoint batches, fence stale workers, reclaim expired work, and expose the publish crash window | The 50-event, lease, fencing, and republish cases in [`product-outbox.prisma.repository.integration.spec.ts`](../apps/product-service/src/catalog/infrastructure/persistence/prisma/product-outbox.prisma.repository.integration.spec.ts)                                                                                                                                                                                                                                                                                         |
+| Product and sale duplicate events are no-ops only for identical payloads                                              | [`inventory.prisma.repository.integration.spec.ts`](../apps/inventory-service/src/inventory/infrastructure/persistence/prisma/inventory.prisma.repository.integration.spec.ts), [`flash-sale-stock.prisma.repository.integration.spec.ts`](../apps/inventory-service/src/inventory/infrastructure/persistence/prisma/flash-sale-stock.prisma.repository.integration.spec.ts), and [`kafka-event-delivery.integration.spec.ts`](../tests/integration/kafka-event-delivery.integration.spec.ts)                                     |
+| Scheduling and its sale outbox event are atomic, immutable, and overlap-safe                                          | [`flash-sale.prisma.repository.integration.spec.ts`](../apps/product-service/src/flash-sales/infrastructure/persistence/prisma/flash-sale.prisma.repository.integration.spec.ts) and [`flash-sale.entity.spec.ts`](../apps/product-service/src/flash-sales/domain/entities/flash-sale.entity.spec.ts)                                                                                                                                                                                                                             |
+| Effective sale pricing is selected server-side and stored in the cart snapshot                                        | [`get-product-sku-snapshot.use-case.spec.ts`](../apps/product-service/src/catalog/application/use-cases/get-product-sku-snapshot.use-case.spec.ts), [`add-cart-item.use-case.spec.ts`](../apps/cart-service/src/carts/application/use-cases/add-cart-item.use-case.spec.ts), and the sale E2E scenario                                                                                                                                                                                                                            |
+| Checkout and order identities converge under concurrent retries                                                       | The 20-call order and checkout-attempt races in [`order-checkout-idempotency.integration.spec.ts`](../tests/integration/order-checkout-idempotency.integration.spec.ts)                                                                                                                                                                                                                                                                                                                                                           |
+| Unknown inventory/order outcomes retain a durable next action and avoid destructive compensation                      | [`checkout-recovery.scenarios.spec.ts`](../apps/cart-service/src/carts/application/use-cases/checkout-recovery.scenarios.spec.ts), [`checkout-cart.use-case.spec.ts`](../apps/cart-service/src/carts/application/use-cases/checkout-cart.use-case.spec.ts), [`checkout-reconciliation.worker.spec.ts`](../apps/cart-service/src/carts/infrastructure/workers/checkout-reconciliation.worker.spec.ts), and the persisted-order/lost-response E2E scenario in [`gateway-stack.e2e.spec.ts`](../tests/e2e/gateway-stack.e2e.spec.ts) |
+| Sale allocation, normal stock, one-per-user claims, mixed-cart rollback, boundaries, and lifecycle retries are atomic | The real PostgreSQL concurrency matrix in [`inventory.prisma.repository.integration.spec.ts`](../apps/inventory-service/src/inventory/infrastructure/persistence/prisma/inventory.prisma.repository.integration.spec.ts)                                                                                                                                                                                                                                                                                                          |
+| Repeated checkout returns the same order and regular checkout remains unaffected                                      | Sale replay and regular regression scenarios in [`gateway-stack.e2e.spec.ts`](../tests/e2e/gateway-stack.e2e.spec.ts)                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Product and sale creation survive broker outage and inventory catches up                                              | Broker-outage scenario in [`gateway-stack.e2e.spec.ts`](../tests/e2e/gateway-stack.e2e.spec.ts)                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 100 concurrent buyers cannot oversell, duplicate orders, or purchase twice                                            | The k6 concurrency profile, its database verifier, and the committed [`concurrency.md`](../tests/load/baselines/concurrency.md) baseline                                                                                                                                                                                                                                                                                                                                                                                          |
+| Schema constraints, indexes, compatibility, and repeatable migrations remain valid                                    | [`postgres-migrations.integration.spec.ts`](../tests/integration/postgres-migrations.integration.spec.ts), [`protobuf-backward-compatibility.contract.spec.ts`](../tests/contract/protobuf-backward-compatibility.contract.spec.ts), and the inventory/order proto contract suites                                                                                                                                                                                                                                                |
 
 ## Reproduction
 
@@ -151,11 +179,20 @@ npm run test:integration
 npm run test:e2e
 ```
 
+The four test lanes can also be run in sequence with `npm run test:all`.
+
 Install k6 2.3.0, then run the CI-equivalent E2E plus smoke path:
 
 ```bash
-K6_SUMMARY_TREND_STATS='avg,min,med,p(90),p(95),p(99),max' \
-  RUN_LOAD_SMOKE=1 npm run test:e2e
+RUN_LOAD_SMOKE=1 npm run test:e2e
+```
+
+Reproduce the recorded 100-buyer baseline against the same disposable stack:
+
+```bash
+RUN_LOAD_PROFILE=concurrency \
+  LOAD_BASELINE_PATH=tests/load/baselines/concurrency.md \
+  npm run test:e2e
 ```
 
 The integration and E2E scripts create unique databases, topics, consumer
