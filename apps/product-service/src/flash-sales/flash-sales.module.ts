@@ -11,11 +11,11 @@ import {
   FlashSaleRepositoryPort,
 } from './domain/repositories/flash-sale.repository.port';
 import { PrismaFlashSaleRepository } from './infrastructure/persistence/prisma/flash-sale.prisma.repository';
-import { FlashSalesController } from './presentation/http/flash-sales.controller';
+import { FlashSalesGrpcController } from './presentation/grpc/flash-sales.grpc.controller';
 
 @Module({
   imports: [CatalogModule],
-  controllers: [FlashSalesController],
+  controllers: [FlashSalesGrpcController],
   providers: [
     PrismaFlashSaleRepository,
     {

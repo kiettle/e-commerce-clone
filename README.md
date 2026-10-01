@@ -15,13 +15,13 @@ This repository is a portfolio backend project for demonstrating:
 - PostgreSQL database ownership per service
 - gRPC service-to-service calls
 - Kafka-compatible product events through Redpanda
-- Checkout compensation logic when order creation fails
-- Testable application boundaries around risky business behavior
+- Durable checkout recovery and compensation for definite failures
+- Unit, contract, PostgreSQL/Kafka/gRPC integration, gateway E2E, and k6 verification
 
-The implemented happy path is suitable for a controlled local demonstration.
-Automated tests, end-to-end reliability, authorization, and production
-deployment hardening are still incomplete; see
-[Current Limitations](#current-limitations).
+The implemented workflow is suitable for a controlled local demonstration and
+has automated reliability, authorization, concurrency, and full-stack evidence.
+Production deployment, service-to-service authentication, and observability
+hardening remain intentionally incomplete; see [Current Limitations](#current-limitations).
 
 ## Architecture
 
@@ -29,11 +29,11 @@ deployment hardening are still incomplete; see
 flowchart LR
     Browser["React demo or API client"] -->|REST + JWT| Gateway["API Gateway"]
     Gateway -->|gRPC| Auth["Auth service"]
-    Gateway -->|REST| Product["Product service"]
+    Gateway -->|gRPC| Product["Product service"]
     Gateway -->|REST + internal user header| Cart["Cart service"]
-    Cart -->|REST snapshot lookup| Product
-    Cart -->|gRPC reserve/release| Inventory["Inventory service"]
-    Cart -->|gRPC create| Order["Order service"]
+    Cart -->|gRPC snapshot lookup| Product
+    Cart -->|gRPC reserve/commit/release| Inventory["Inventory service"]
+    Cart -->|gRPC create/find| Order["Order service"]
     Product -->|ProductCreated + FlashSaleScheduled| Kafka["Redpanda (Kafka API)"]
     Kafka -->|consumer group| Inventory
 
@@ -54,7 +54,7 @@ across service boundaries.
 | ------------------- | ---------------: | ------------------------------------------------------------------- |
 | `gateway`           |             4000 | Public HTTP entry point, auth/catalog/cart forwarding, Swagger docs |
 | `auth-service`      | 4005 / gRPC 9005 | Users, login, JWT generation, token validation                      |
-| `product-service`   |             4001 | Catalog, flash sales, effective pricing, transactional outbox       |
+| `product-service`   | 4001 / gRPC 9001 | Catalog, flash sales, effective pricing, transactional outbox       |
 | `inventory-service` | 4003 / gRPC 9003 | Normal/sale stock projections and reserve/commit/release            |
 | `cart-service`      |             4002 | Durable carts, price snapshots, and checkout orchestration          |
 | `order-service`     | 4004 / gRPC 9004 | Idempotent checkout orders and server-calculated totals             |
@@ -65,8 +65,9 @@ across service boundaries.
 | ------- | ------------------- | -------------------------------------------- | ------------------------------------------------------- |
 | Client  | Gateway             | REST/JSON                                    | Browser-friendly public API and Swagger documentation   |
 | Gateway | Auth                | gRPC/Protobuf                                | Typed synchronous login and token-validation calls      |
-| Gateway | Product and Cart    | REST/JSON                                    | Simple request forwarding at the public boundary        |
-| Cart    | Product             | REST/JSON                                    | Fetch a product/SKU snapshot before storing a cart item |
+| Gateway | Product             | gRPC/Protobuf                                | Typed internal catalog and flash-sale contracts         |
+| Gateway | Cart                | REST/JSON                                    | Thin forwarding with trusted authenticated user context |
+| Cart    | Product             | gRPC/Protobuf                                | Fetch a typed product/SKU pricing snapshot              |
 | Cart    | Inventory and Order | gRPC/Protobuf                                | Typed synchronous checkout operations                   |
 | Product | Inventory           | Kafka-compatible event with Protobuf payload | Decouple product persistence from stock initialization  |
 
@@ -96,6 +97,10 @@ Operational inspection and failed-event replay are documented in the
 The full sprint evidence and cross-service incident procedures are in the
 [flash-sale verification report](docs/flash-sale-verification-report.md) and
 [flash-sale operations runbook](docs/flash-sale-runbook.md).
+For a source-linked architecture walkthrough and interview preparation, start
+with the [interview guide](docs/interview-guide/00-index-and-reading-map.md).
+For presentation outlines, speaker notes, demos, and prepared follow-up
+questions, use the [engineering sharing pack](docs/slides/README.md).
 
 ### Authenticated checkout
 
@@ -214,6 +219,7 @@ through the internal `x-user-id` header.
 ### gRPC Contracts
 
 - Auth: `Login`, `ValidateToken`
+- Product: catalog, flash-sale, and effective-price snapshot operations
 - Inventory: `ReserveStock`, `CommitStock`, `ReleaseStock`
 - Order: `CreateOrder`, `GetOrderByCheckoutId`
 
@@ -225,8 +231,8 @@ Shared protobuf files live in `libs/proto`.
 | ----------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | NestJS + TypeScript           | Modules, dependency injection, DTO validation, HTTP and gRPC adapters | Productive structure, with more framework ceremony than a small service requires |
 | Prisma + PostgreSQL           | Separate schema and database per stateful service                     | Strong local transactions, but no cross-service transaction or join              |
-| REST/JSON                     | Public gateway and simple internal catalog/cart calls                 | Easy to inspect; weaker contract enforcement than Protobuf                       |
-| gRPC + Protobuf               | Auth validation and checkout commands                                 | Typed and compact; harder to debug manually and currently lacks deadlines        |
+| REST/JSON                     | Public gateway and gateway-to-cart forwarding                         | Browser-friendly; weaker contract enforcement than Protobuf                      |
+| gRPC + Protobuf               | Auth, product, inventory, and order service calls                      | Typed and compact; harder to debug manually and currently lacks deadlines        |
 | Redpanda/Kafka API + Protobuf | Asynchronous product and flash-sale projections                       | Decouples inventory, while at-least-once delivery requires idempotent consumers  |
 | JWT + bcrypt                  | Authentication, password verification, and gateway role enforcement   | Stateless tokens scale well, but token revocation is not implemented             |
 | React + Vite                  | Focused demo UI                                                       | Improves presentation but is not the architectural focus                         |
@@ -612,11 +618,12 @@ operation are intentionally outside the current demo scope.
 
 ## Recommended Next Work
 
-1. Run durable checkout reconciliation automatically.
-2. Add operational visibility for sale allocation and failed checkout attempts.
-3. Add metrics and read-only admin visibility for outbox backlog age and failed events.
-4. Add catalog authorization, request deadlines, correlation IDs, and a
-   reproducible deployment artifact.
+1. Add metrics and read-only administrator visibility for checkout recovery,
+   sale allocation, outbox backlog age, and failed events.
+2. Add correlation/trace IDs and uniform HTTP/gRPC deadlines.
+3. Add service-to-service authentication and complete OS-signal shutdown wiring
+   for every worker-owning service.
+4. Produce and verify reproducible deployment images and readiness checks.
 
 See the [Development Guide](docs/development-guide.md) for contribution rules
 and the [Roadmap and Handoff](docs/roadmap.md) for detailed priorities,

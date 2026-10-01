@@ -7,6 +7,7 @@ describe('protobuf backward compatibility', () => {
   const authRoot = loadSync(join(process.cwd(), 'libs/proto/auth.proto'));
   const inventoryRoot = loadSync(join(process.cwd(), 'libs/proto/inventory.proto'));
   const orderRoot = loadSync(join(process.cwd(), 'libs/proto/order.proto'));
+  const productServiceRoot = loadSync(join(process.cwd(), 'libs/proto/product.proto'));
   const productRoot = loadSync(join(process.cwd(), 'libs/proto/product_event.proto'));
 
   it('preserves auth validation field numbers and decodes a legacy response without role', () => {
@@ -166,6 +167,43 @@ describe('protobuf backward compatibility', () => {
           flashSaleItemId: '9007199254740999',
         }),
       ],
+    });
+  });
+
+  it('preserves int64 identifiers across the internal product gRPC contract', () => {
+    const request = productServiceRoot.lookupType('product.CreateProductRequest');
+    expect(fieldNumbers(request)).toEqual({
+      name: 1,
+      description: 2,
+      imageUrl: 3,
+      categoryId: 4,
+      sellerId: 5,
+      status: 6,
+      skus: 7,
+    });
+
+    const decoded = decode(
+      request,
+      request.fromObject({
+        name: 'Large-ID Keyboard',
+        categoryId: '9007199254740993',
+        sellerId: '9223372036854775807',
+        status: 'ACTIVE',
+        skus: [
+          {
+            skuCode: 'LARGE-ID',
+            price: 19.9,
+            status: 'AVAILABLE',
+            quantity: 5,
+          },
+        ],
+      }),
+    );
+
+    expect(decoded).toMatchObject({
+      categoryId: '9007199254740993',
+      sellerId: '9223372036854775807',
+      skus: [{ skuCode: 'LARGE-ID' }],
     });
   });
 });

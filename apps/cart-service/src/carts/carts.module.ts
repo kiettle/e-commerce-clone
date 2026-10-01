@@ -32,7 +32,7 @@ import {
 } from './domain/repositories/checkout-attempt.repository.port';
 import { InventoryGrpcStockClient } from './infrastructure/grpc/inventory-grpc-stock.client';
 import { OrderGrpcCreatorClient } from './infrastructure/grpc/order-grpc-creator.client';
-import { ProductHttpCatalogClient } from './infrastructure/http/product-http-catalog.client';
+import { ProductGrpcCatalogClient } from './infrastructure/grpc/product-grpc-catalog.client';
 import { NestCheckoutFailureLogger } from './infrastructure/logging/nest-checkout-failure.logger';
 import { PrismaCartRepository } from './infrastructure/persistence/prisma/cart.prisma.repository';
 import { PrismaCheckoutAttemptRepository } from './infrastructure/persistence/prisma/checkout-attempt.prisma.repository';
@@ -56,7 +56,7 @@ import { CheckoutsController } from './presentation/http/checkouts.controller';
     },
     {
       provide: PRODUCT_CATALOG,
-      useClass: ProductHttpCatalogClient,
+      useClass: ProductGrpcCatalogClient,
     },
     {
       provide: INVENTORY_STOCK,

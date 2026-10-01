@@ -173,11 +173,11 @@ require_command docker
 require_command node
 require_command npm
 
-read -r GATEWAY_PORT AUTH_HTTP_PORT AUTH_GRPC_PORT PRODUCT_PORT INVENTORY_HTTP_PORT \
+read -r GATEWAY_PORT AUTH_HTTP_PORT AUTH_GRPC_PORT PRODUCT_PORT PRODUCT_GRPC_PORT INVENTORY_HTTP_PORT \
   INVENTORY_GRPC_PORT CART_PORT ORDER_HTTP_PORT ORDER_GRPC_PORT KAFKA_PORT < <(
   node -e '
 const net = require("node:net");
-const servers = Array.from({ length: 10 }, () => net.createServer());
+const servers = Array.from({ length: 11 }, () => net.createServer());
 Promise.all(servers.map((server) => new Promise((resolve, reject) => {
   server.once("error", reject);
   server.listen(0, "127.0.0.1", resolve);
@@ -276,7 +276,8 @@ start_service auth-service \
 AUTH_PID="$LAST_PID"
 
 start_service product-service \
-  NODE_ENV=test PORT="$PRODUCT_PORT" PRODUCT_DATABASE_URL="$PRODUCT_DATABASE_URL" \
+  NODE_ENV=test PORT="$PRODUCT_PORT" PRODUCT_GRPC_URL="0.0.0.0:${PRODUCT_GRPC_PORT}" \
+  PRODUCT_DATABASE_URL="$PRODUCT_DATABASE_URL" \
   "${COMMON_KAFKA_ENV[@]}" PRODUCT_OUTBOX_POLL_INTERVAL_MS=250 \
   PRODUCT_OUTBOX_BATCH_SIZE=20 PRODUCT_OUTBOX_LEASE_MS=5000 \
   PRODUCT_OUTBOX_SHUTDOWN_TIMEOUT_MS=2000 PRODUCT_OUTBOX_MAX_ATTEMPTS=5
@@ -296,7 +297,7 @@ ORDER_PID="$LAST_PID"
 
 start_service cart-service \
   NODE_ENV=test PORT="$CART_PORT" CART_DATABASE_URL="$CART_DATABASE_URL" \
-  PRODUCT_SERVICE_URL="http://127.0.0.1:${PRODUCT_PORT}" \
+  PRODUCT_GRPC_URL="127.0.0.1:${PRODUCT_GRPC_PORT}" \
   INVENTORY_GRPC_URL="127.0.0.1:${INVENTORY_GRPC_PORT}" \
   ORDER_GRPC_URL="127.0.0.1:${ORDER_GRPC_PORT}" \
   CHECKOUT_RECONCILIATION_POLL_INTERVAL_MS=60000 \
@@ -306,7 +307,7 @@ CART_PID="$LAST_PID"
 
 start_service gateway \
   NODE_ENV=test PORT="$GATEWAY_PORT" AUTH_GRPC_URL="127.0.0.1:${AUTH_GRPC_PORT}" \
-  PRODUCT_SERVICE_URL="http://127.0.0.1:${PRODUCT_PORT}" \
+  PRODUCT_GRPC_URL="127.0.0.1:${PRODUCT_GRPC_PORT}" \
   CART_SERVICE_URL="http://127.0.0.1:${CART_PORT}"
 GATEWAY_PID="$LAST_PID"
 

@@ -26,7 +26,7 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { RolesGuard } from '../../../common/guards/roles.guard';
-import { CatalogGatewayClient } from '../../infrastructure/http/catalog-gateway.client';
+import { CatalogGatewayClient } from '../../infrastructure/grpc/catalog-gateway.client';
 import {
   CreateProductRequestDto,
   ProductResponseDto,

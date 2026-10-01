@@ -34,9 +34,7 @@ import { PrismaCategoryRepository } from './infrastructure/persistence/prisma/ca
 import { PrismaProductOutboxRepository } from './infrastructure/persistence/prisma/product-outbox.prisma.repository';
 import { PrismaProductRepository } from './infrastructure/persistence/prisma/product.prisma.repository';
 import { PrismaService } from './infrastructure/persistence/prisma/prisma.service';
-import { CategoriesController } from './presentation/http/categories.controller';
-import { ProductsController } from './presentation/http/products.controller';
-import { InternalProductSkusController } from './presentation/http/internal-product-skus.controller';
+import { ProductGrpcController } from './presentation/grpc/product.grpc.controller';
 import {
   PRODUCT_SKU_SNAPSHOT_REPOSITORY,
   ProductSkuSnapshotRepositoryPort,
@@ -45,7 +43,7 @@ import { GetProductSkuSnapshotUseCase } from './application/use-cases/get-produc
 import { PrismaProductSkuSnapshotRepository } from './infrastructure/persistence/prisma/product-sku-snapshot.prisma.repository';
 
 @Module({
-  controllers: [CategoriesController, ProductsController, InternalProductSkusController],
+  controllers: [ProductGrpcController],
   providers: [
     PrismaService,
     PrismaProductRepository,

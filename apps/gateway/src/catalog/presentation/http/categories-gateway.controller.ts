@@ -9,7 +9,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
-import { CatalogGatewayClient } from '../../infrastructure/http/catalog-gateway.client';
+import { CatalogGatewayClient } from '../../infrastructure/grpc/catalog-gateway.client';
 import {
   CategoryResponseDto,
   CreateCategoryRequestDto,
@@ -41,4 +41,3 @@ export class CategoriesGatewayController {
     return this.catalogClient.createCategory(body);
   }
 }
-

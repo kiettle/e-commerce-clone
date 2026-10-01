@@ -28,7 +28,7 @@ import { UserRole } from '../../../common/enums/user-role.enum';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { AuthenticatedRequest } from '../../../common/types/authenticated-user';
-import { CatalogGatewayClient } from '../../infrastructure/http/catalog-gateway.client';
+import { CatalogGatewayClient } from '../../infrastructure/grpc/catalog-gateway.client';
 import {
   CreateFlashSaleRequestDto,
   FlashSaleResponseDto,

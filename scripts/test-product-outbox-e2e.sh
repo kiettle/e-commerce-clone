@@ -11,8 +11,11 @@ INVENTORY_DATABASE_URL="postgresql://postgres:postgres@localhost:5003/$INVENTORY
 CART_DATABASE_URL="postgresql://postgres:postgres@localhost:5002/$CART_DATABASE_NAME"
 ORDER_DATABASE_URL="postgresql://postgres:postgres@localhost:5004/$ORDER_DATABASE_NAME"
 PRODUCT_API_PORT="${OUTBOX_PRODUCT_API_PORT:-4211}"
+PRODUCT_GRPC_PORT="${OUTBOX_PRODUCT_GRPC_PORT:-9211}"
 PUBLISHER_API_PORT="${OUTBOX_PUBLISHER_API_PORT:-4212}"
+PUBLISHER_GRPC_PORT="${OUTBOX_PUBLISHER_GRPC_PORT:-9212}"
 REPLAY_API_PORT="${OUTBOX_REPLAY_API_PORT:-4213}"
+REPLAY_GRPC_PORT="${OUTBOX_REPLAY_GRPC_PORT:-9213}"
 INVENTORY_API_PORT="${OUTBOX_INVENTORY_API_PORT:-4311}"
 INVENTORY_GRPC_PORT="${OUTBOX_INVENTORY_GRPC_PORT:-9311}"
 CART_API_PORT="${SALE_E2E_CART_API_PORT:-4411}"
@@ -112,6 +115,22 @@ request_as_admin() {
 
   HTTP_STATUS="$(curl "${args[@]}" "$url")"
   HTTP_BODY="$(cat "$RESPONSE_FILE")"
+}
+
+product_grpc_request() {
+  local method="$1"
+  local body="${2:-}"
+  local success_status="${3:-200}"
+
+  if [[ -z "$body" ]]; then
+    body='{}'
+  fi
+
+  if HTTP_BODY="$(node scripts/call-product-grpc.cjs "localhost:$PRODUCT_GRPC_PORT" "$method" "$body")"; then
+    HTTP_STATUS="$success_status"
+  else
+    HTTP_STATUS=500
+  fi
 }
 
 db_value() {
@@ -239,12 +258,14 @@ stop_process() {
 
 start_product_service() {
   local port="$1"
-  local poll_interval="$2"
-  local log_file="$3"
+  local grpc_port="$2"
+  local poll_interval="$3"
+  local log_file="$4"
 
   env \
     NODE_ENV=test \
     PORT="$port" \
+    PRODUCT_GRPC_URL="0.0.0.0:$grpc_port" \
     PRODUCT_DATABASE_URL="$PRODUCT_DATABASE_URL" \
     KAFKA_BROKERS=localhost:9094 \
     PRODUCT_EVENTS_TOPIC="$TOPIC" \
@@ -287,7 +308,7 @@ start_order_service() {
 start_cart_service() {
   local log_file="$1"
   env NODE_ENV=test PORT="$CART_API_PORT" CART_DATABASE_URL="$CART_DATABASE_URL" \
-    PRODUCT_SERVICE_URL="http://localhost:$PRODUCT_API_PORT" \
+    PRODUCT_GRPC_URL="localhost:$PRODUCT_GRPC_PORT" \
     INVENTORY_GRPC_URL="localhost:$INVENTORY_GRPC_PORT" \
     ORDER_GRPC_URL="localhost:$ORDER_GRPC_PORT" \
     node dist/apps/cart-service/main.js >"$log_file" 2>&1 &
@@ -330,8 +351,11 @@ require_command node
 require_command npm
 
 assert_port_available product-service "$PRODUCT_API_PORT"
+assert_port_available product-service-grpc "$PRODUCT_GRPC_PORT"
 assert_port_available publisher-worker "$PUBLISHER_API_PORT"
+assert_port_available publisher-worker-grpc "$PUBLISHER_GRPC_PORT"
 assert_port_available replay-worker "$REPLAY_API_PORT"
+assert_port_available replay-worker-grpc "$REPLAY_GRPC_PORT"
 assert_port_available inventory-service "$INVENTORY_API_PORT"
 assert_port_available inventory-grpc "$INVENTORY_GRPC_PORT"
 assert_port_available cart-service "$CART_API_PORT"
@@ -380,17 +404,17 @@ db_execute postgres-inventory "$INVENTORY_DATABASE_NAME" \
 
 echo 'Scenario A — broker outage during product creation'
 docker compose stop redpanda >/dev/null
-start_product_service "$PRODUCT_API_PORT" 60000 "$TEMP_DIR/product.log"
+start_product_service "$PRODUCT_API_PORT" "$PRODUCT_GRPC_PORT" 60000 "$TEMP_DIR/product.log"
 PRODUCT_PID="$LAST_PID"
 wait_for_http product-service "http://localhost:$PRODUCT_API_PORT/health" "$PRODUCT_PID" "$TEMP_DIR/product.log"
 
-request POST "http://localhost:$PRODUCT_API_PORT/api/categories" \
-  '{"name":"Integration Accessories","slug":"integration-accessories"}'
+product_grpc_request CreateCategory \
+  '{"name":"Integration Accessories","slug":"integration-accessories"}' 201
 assert_equal 201 "$HTTP_STATUS" 'category creation should return HTTP 201'
 CATEGORY_ID="$(json_field id "$HTTP_BODY")"
 
-request POST "http://localhost:$PRODUCT_API_PORT/api/products" \
-  "{\"name\":\"Outbox Integration Keyboard\",\"description\":\"Broker outage verification\",\"categoryId\":$CATEGORY_ID,\"sellerId\":7001,\"status\":\"ACTIVE\",\"skus\":[{\"skuCode\":\"OUTBOX-BLACK\",\"price\":79.90,\"status\":\"AVAILABLE\",\"quantity\":12},{\"skuCode\":\"OUTBOX-WHITE\",\"price\":84.90,\"status\":\"AVAILABLE\",\"quantity\":7}]}"
+product_grpc_request CreateProduct \
+  "{\"name\":\"Outbox Integration Keyboard\",\"description\":\"Broker outage verification\",\"categoryId\":$CATEGORY_ID,\"sellerId\":7001,\"status\":\"ACTIVE\",\"skus\":[{\"skuCode\":\"OUTBOX-BLACK\",\"price\":79.90,\"status\":\"AVAILABLE\",\"quantity\":12},{\"skuCode\":\"OUTBOX-WHITE\",\"price\":84.90,\"status\":\"AVAILABLE\",\"quantity\":7}]}" 201
 assert_equal 201 "$HTTP_STATUS" 'product creation should return HTTP 201 while Redpanda is down'
 PRODUCT_ID="$(json_field id "$HTTP_BODY")"
 SKU_COUNT="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).skus.length))' "$HTTP_BODY")"
@@ -414,7 +438,7 @@ docker compose exec -T redpanda rpk topic create "$FLASH_TOPIC" >/dev/null
 start_inventory_service "$TEMP_DIR/inventory.log"
 INVENTORY_PID="$LAST_PID"
 wait_for_http inventory-service "http://localhost:$INVENTORY_API_PORT/health" "$INVENTORY_PID" "$TEMP_DIR/inventory.log"
-start_product_service "$PUBLISHER_API_PORT" 250 "$TEMP_DIR/publisher.log"
+start_product_service "$PUBLISHER_API_PORT" "$PUBLISHER_GRPC_PORT" 250 "$TEMP_DIR/publisher.log"
 PUBLISHER_PID="$LAST_PID"
 wait_for_http publisher-worker "http://localhost:$PUBLISHER_API_PORT/health" "$PUBLISHER_PID" "$TEMP_DIR/publisher.log"
 
@@ -433,7 +457,7 @@ echo "  PASS productId=$PRODUCT_ID eventId=$EVENT_ID"
 echo 'Scenario B — acknowledged event is republished after an expired lease'
 db_execute postgres-product "$PRODUCT_DATABASE_NAME" \
   "UPDATE \"product_outbox_events\" SET \"status\" = 'PROCESSING', \"lease_owner\" = 'lost-worker', \"lease_until\" = NOW() - INTERVAL '1 second', \"published_at\" = NULL WHERE \"id\" = '$EVENT_ID';"
-start_product_service "$REPLAY_API_PORT" 250 "$TEMP_DIR/replay.log"
+start_product_service "$REPLAY_API_PORT" "$REPLAY_GRPC_PORT" 250 "$TEMP_DIR/replay.log"
 REPLAY_PID="$LAST_PID"
 wait_for_http replay-worker "http://localhost:$REPLAY_API_PORT/health" "$REPLAY_PID" "$TEMP_DIR/replay.log"
 
@@ -463,17 +487,17 @@ wait_for_http cart-service "http://localhost:$CART_API_PORT/health" "$CART_PID" 
 
 FLASH_STARTS_AT="$(node -e 'process.stdout.write(new Date(Date.now() + 310000).toISOString())')"
 FLASH_ENDS_AT="$(node -e 'process.stdout.write(new Date(Date.now() + 610000).toISOString())')"
-request_as_admin POST "http://localhost:$PRODUCT_API_PORT/api/flash-sales" \
-  "{\"name\":\"Outbox Integration Flash Sale\",\"description\":\"Broker outage verification\",\"startsAt\":\"$FLASH_STARTS_AT\",\"endsAt\":\"$FLASH_ENDS_AT\",\"items\":[{\"productSkuId\":$SKU_ID,\"salePrice\":49.90,\"stockLimit\":3,\"maxQuantityPerUser\":1}]}"
+product_grpc_request CreateFlashSale \
+  "{\"createdBy\":7001,\"name\":\"Outbox Integration Flash Sale\",\"description\":\"Broker outage verification\",\"startsAt\":\"$FLASH_STARTS_AT\",\"endsAt\":\"$FLASH_ENDS_AT\",\"items\":[{\"productSkuId\":$SKU_ID,\"salePrice\":49.90,\"stockLimit\":3,\"maxQuantityPerUser\":1}]}" 201
 assert_equal 201 "$HTTP_STATUS" 'flash sale draft creation should return HTTP 201'
 FLASH_SALE_ID="$(json_field id "$HTTP_BODY")"
 
-request POST "http://localhost:$PRODUCT_API_PORT/api/flash-sales/$FLASH_SALE_ID/schedule"
+product_grpc_request ScheduleFlashSale "{\"flashSaleId\":$FLASH_SALE_ID}" 201
 assert_equal 201 "$HTTP_STATUS" 'flash sale scheduling should return HTTP 201 while Redpanda is down'
 FLASH_EVENT_ID="$(db_value postgres-product "$PRODUCT_DATABASE_NAME" "SELECT \"id\" FROM \"product_outbox_events\" WHERE \"event_type\" = 'FLASH_SALE_SCHEDULED' AND \"aggregate_id\" = $FLASH_SALE_ID;")"
 assert_equal PENDING "$(db_value postgres-product "$PRODUCT_DATABASE_NAME" "SELECT \"status\" FROM \"product_outbox_events\" WHERE \"id\" = '$FLASH_EVENT_ID';")" 'flash sale event must remain pending'
 assert_equal 0 "$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT COUNT(*) FROM \"flash_sale_stocks\" WHERE \"flash_sale_id\" = $FLASH_SALE_ID;")" 'flash sale projection must not initialize while Redpanda is down'
-request GET "http://localhost:$PRODUCT_API_PORT/api/flash-sales?status=upcoming"
+product_grpc_request ListFlashSales '{"status":"upcoming"}' 200
 assert_equal 200 "$HTTP_STATUS" 'sale must remain visible as upcoming while publication is delayed'
 assert_equal "$FLASH_SALE_ID" "$(json_field 0.id "$HTTP_BODY")" 'the delayed sale must be listed'
 assert_equal UPCOMING "$(json_field 0.status "$HTTP_BODY")" 'the delayed sale must remain upcoming'
@@ -506,7 +530,7 @@ if [[ "$HTTP_STATUS" != 409 ]]; then
 fi
 assert_equal 409 "$HTTP_STATUS" 'checkout before projection should fail definitely'
 assert_equal FLASH_SALE_NOT_READY "$(json_field code "$HTTP_BODY")" 'missing projection must return FLASH_SALE_NOT_READY'
-start_product_service "$REPLAY_API_PORT" 250 "$TEMP_DIR/flash-publisher.log"
+start_product_service "$REPLAY_API_PORT" "$REPLAY_GRPC_PORT" 250 "$TEMP_DIR/flash-publisher.log"
 REPLAY_PID="$LAST_PID"
 wait_for_http replay-worker "http://localhost:$REPLAY_API_PORT/health" "$REPLAY_PID" "$TEMP_DIR/flash-publisher.log"
 
@@ -566,11 +590,11 @@ echo "  PASS cartId=$SALE_CART_ID orderId=$SALE_ORDER_ID"
 echo 'Scenario E — an item added during a sale fails after authoritative inventory expiry'
 EXPIRY_STARTS_AT="$(node -e 'process.stdout.write(new Date(Date.now() + 310000).toISOString())')"
 EXPIRY_ENDS_AT="$(node -e 'process.stdout.write(new Date(Date.now() + 370000).toISOString())')"
-request_as_admin POST "http://localhost:$PRODUCT_API_PORT/api/flash-sales" \
-  "{\"name\":\"Expiry Integration Sale\",\"startsAt\":\"$EXPIRY_STARTS_AT\",\"endsAt\":\"$EXPIRY_ENDS_AT\",\"items\":[{\"productSkuId\":$SECOND_SKU_ID,\"salePrice\":39.90,\"stockLimit\":1,\"maxQuantityPerUser\":1}]}"
+product_grpc_request CreateFlashSale \
+  "{\"createdBy\":7001,\"name\":\"Expiry Integration Sale\",\"startsAt\":\"$EXPIRY_STARTS_AT\",\"endsAt\":\"$EXPIRY_ENDS_AT\",\"items\":[{\"productSkuId\":$SECOND_SKU_ID,\"salePrice\":39.90,\"stockLimit\":1,\"maxQuantityPerUser\":1}]}" 201
 assert_equal 201 "$HTTP_STATUS" 'expiry sale draft creation should succeed'
 EXPIRY_SALE_ID="$(json_field id "$HTTP_BODY")"
-request POST "http://localhost:$PRODUCT_API_PORT/api/flash-sales/$EXPIRY_SALE_ID/schedule"
+product_grpc_request ScheduleFlashSale "{\"flashSaleId\":$EXPIRY_SALE_ID}" 201
 assert_equal 201 "$HTTP_STATUS" 'expiry sale scheduling should succeed'
 wait_for_db_value postgres-inventory "$INVENTORY_DATABASE_NAME" \
   "SELECT COUNT(*) FROM \"flash_sale_stocks\" WHERE \"flash_sale_id\" = $EXPIRY_SALE_ID;" 1 \
@@ -611,8 +635,8 @@ assert_equal "$EXPIRY_INVENTORY_BEFORE" "$(db_value postgres-inventory "$INVENTO
 echo "  PASS cartId=$EXPIRY_CART_ID code=FLASH_SALE_ENDED"
 
 echo 'Scenario F — two concurrent checkouts cannot exceed a one-unit sale allocation'
-request POST "http://localhost:$PRODUCT_API_PORT/api/products" \
-  "{\"name\":\"Concurrency Verification Mouse\",\"description\":\"Sale checkout race verification\",\"categoryId\":$CATEGORY_ID,\"sellerId\":7001,\"status\":\"ACTIVE\",\"skus\":[{\"skuCode\":\"RACE-BLACK\",\"price\":29.90,\"status\":\"AVAILABLE\",\"quantity\":5},{\"skuCode\":\"LIMIT-WHITE\",\"price\":39.90,\"status\":\"AVAILABLE\",\"quantity\":5}]}"
+product_grpc_request CreateProduct \
+  "{\"name\":\"Concurrency Verification Mouse\",\"description\":\"Sale checkout race verification\",\"categoryId\":$CATEGORY_ID,\"sellerId\":7001,\"status\":\"ACTIVE\",\"skus\":[{\"skuCode\":\"RACE-BLACK\",\"price\":29.90,\"status\":\"AVAILABLE\",\"quantity\":5},{\"skuCode\":\"LIMIT-WHITE\",\"price\":39.90,\"status\":\"AVAILABLE\",\"quantity\":5}]}" 201
 assert_equal 201 "$HTTP_STATUS" 'concurrency product creation should succeed'
 CONCURRENCY_PRODUCT_ID="$(json_field id "$HTTP_BODY")"
 SOLD_OUT_SKU_ID="$(json_field skus.0.id "$HTTP_BODY")"
@@ -623,11 +647,11 @@ wait_for_db_value postgres-inventory "$INVENTORY_DATABASE_NAME" \
 
 CONCURRENCY_STARTS_AT="$(node -e 'process.stdout.write(new Date(Date.now() + 310000).toISOString())')"
 CONCURRENCY_ENDS_AT="$(node -e 'process.stdout.write(new Date(Date.now() + 610000).toISOString())')"
-request_as_admin POST "http://localhost:$PRODUCT_API_PORT/api/flash-sales" \
-  "{\"name\":\"Checkout Concurrency Sale\",\"startsAt\":\"$CONCURRENCY_STARTS_AT\",\"endsAt\":\"$CONCURRENCY_ENDS_AT\",\"items\":[{\"productSkuId\":$SOLD_OUT_SKU_ID,\"salePrice\":19.90,\"stockLimit\":1,\"maxQuantityPerUser\":1},{\"productSkuId\":$USER_LIMIT_SKU_ID,\"salePrice\":24.90,\"stockLimit\":2,\"maxQuantityPerUser\":1}]}"
+product_grpc_request CreateFlashSale \
+  "{\"createdBy\":7001,\"name\":\"Checkout Concurrency Sale\",\"startsAt\":\"$CONCURRENCY_STARTS_AT\",\"endsAt\":\"$CONCURRENCY_ENDS_AT\",\"items\":[{\"productSkuId\":$SOLD_OUT_SKU_ID,\"salePrice\":19.90,\"stockLimit\":1,\"maxQuantityPerUser\":1},{\"productSkuId\":$USER_LIMIT_SKU_ID,\"salePrice\":24.90,\"stockLimit\":2,\"maxQuantityPerUser\":1}]}" 201
 assert_equal 201 "$HTTP_STATUS" 'concurrency sale draft creation should succeed'
 CONCURRENCY_SALE_ID="$(json_field id "$HTTP_BODY")"
-request POST "http://localhost:$PRODUCT_API_PORT/api/flash-sales/$CONCURRENCY_SALE_ID/schedule"
+product_grpc_request ScheduleFlashSale "{\"flashSaleId\":$CONCURRENCY_SALE_ID}" 201
 assert_equal 201 "$HTTP_STATUS" 'concurrency sale scheduling should succeed'
 wait_for_db_value postgres-inventory "$INVENTORY_DATABASE_NAME" \
   "SELECT COUNT(*) FROM \"flash_sale_stocks\" WHERE \"flash_sale_id\" = $CONCURRENCY_SALE_ID;" 2 \

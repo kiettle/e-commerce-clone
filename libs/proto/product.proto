@@ -1,0 +1,204 @@
+syntax = "proto3";
+
+package product;
+
+option java_multiple_files = true;
+option java_package = "product";
+
+service ProductService {
+  rpc ListCategories (ListCategoriesRequest) returns (ListCategoriesResponse);
+  rpc CreateCategory (CreateCategoryRequest) returns (CategoryResponse);
+  rpc SearchProducts (SearchProductsRequest) returns (SearchProductsResponse);
+  rpc CreateProduct (CreateProductRequest) returns (ProductResponse);
+  rpc UpdateProduct (UpdateProductRequest) returns (ProductResponse);
+  rpc DeleteProduct (ProductIdRequest) returns (ProductResponse);
+  rpc GetProductSkuSnapshot (ProductSkuSnapshotRequest)
+      returns (ProductSkuSnapshotResponse);
+  rpc CreateFlashSale (CreateFlashSaleRequest) returns (FlashSaleResponse);
+  rpc ListFlashSales (ListFlashSalesRequest) returns (ListFlashSalesResponse);
+  rpc UpdateFlashSale (UpdateFlashSaleRequest) returns (FlashSaleResponse);
+  rpc CancelFlashSale (FlashSaleIdRequest) returns (FlashSaleResponse);
+  rpc ScheduleFlashSale (FlashSaleIdRequest) returns (FlashSaleResponse);
+  rpc GetFlashSale (GetFlashSaleRequest) returns (PublicFlashSaleResponse);
+}
+
+message ListCategoriesRequest {}
+
+message ListCategoriesResponse {
+  repeated CategoryResponse categories = 1;
+}
+
+message CreateCategoryRequest {
+  string name = 1;
+  optional string slug = 2;
+}
+
+message CategoryResponse {
+  int64 id = 1;
+  string name = 2;
+  string slug = 3;
+}
+
+message SearchProductsRequest {
+  optional string name = 1;
+  optional int64 category_id = 2;
+}
+
+message SearchProductsResponse {
+  repeated ProductResponse products = 1;
+}
+
+message CreateProductSkuRequest {
+  string sku_code = 1;
+  double price = 2;
+  string status = 3;
+  int32 quantity = 4;
+}
+
+message CreateProductRequest {
+  string name = 1;
+  optional string description = 2;
+  optional string image_url = 3;
+  int64 category_id = 4;
+  int64 seller_id = 5;
+  string status = 6;
+  repeated CreateProductSkuRequest skus = 7;
+}
+
+message UpdateProductRequest {
+  int64 product_id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional string image_url = 4;
+  optional int64 category_id = 5;
+  optional string status = 6;
+}
+
+message ProductIdRequest {
+  int64 product_id = 1;
+}
+
+message ProductSkuResponse {
+  int64 id = 1;
+  int64 product_id = 2;
+  string sku_code = 3;
+  double price = 4;
+  string status = 5;
+}
+
+message ProductResponse {
+  int64 id = 1;
+  string name = 2;
+  optional string description = 3;
+  optional string image_url = 4;
+  int64 category_id = 5;
+  int64 seller_id = 6;
+  string status = 7;
+  repeated ProductSkuResponse skus = 8;
+}
+
+message ProductSkuSnapshotRequest {
+  int64 product_sku_id = 1;
+}
+
+message ProductSkuSnapshotResponse {
+  int64 product_id = 1;
+  string product_name = 2;
+  optional string image_url = 3;
+  int64 product_sku_id = 4;
+  string sku_code = 5;
+  double regular_price = 6;
+  double effective_price = 7;
+  string price_source = 8;
+  optional int64 flash_sale_id = 9;
+  optional int64 flash_sale_item_id = 10;
+  optional string sale_ends_at = 11;
+  optional int32 max_quantity_per_user = 12;
+}
+
+message FlashSaleItemRequest {
+  int64 product_sku_id = 1;
+  double sale_price = 2;
+  int32 stock_limit = 3;
+  int32 max_quantity_per_user = 4;
+}
+
+message CreateFlashSaleRequest {
+  int64 created_by = 1;
+  string name = 2;
+  optional string description = 3;
+  string starts_at = 4;
+  string ends_at = 5;
+  repeated FlashSaleItemRequest items = 6;
+}
+
+message UpdateFlashSaleRequest {
+  int64 flash_sale_id = 1;
+  string name = 2;
+  optional string description = 3;
+  bool description_is_null = 4;
+  string starts_at = 5;
+  string ends_at = 6;
+  repeated FlashSaleItemRequest items = 7;
+}
+
+message ListFlashSalesRequest {
+  string status = 1;
+}
+
+message ListFlashSalesResponse {
+  repeated PublicFlashSaleResponse flash_sales = 1;
+}
+
+message FlashSaleIdRequest {
+  int64 flash_sale_id = 1;
+}
+
+message GetFlashSaleRequest {
+  int64 flash_sale_id = 1;
+  string user_role = 2;
+}
+
+message FlashSaleItemResponse {
+  int64 id = 1;
+  int64 product_sku_id = 2;
+  double original_price = 3;
+  double sale_price = 4;
+  int32 stock_limit = 5;
+  int32 max_quantity_per_user = 6;
+}
+
+message FlashSaleResponse {
+  int64 id = 1;
+  string name = 2;
+  optional string description = 3;
+  string starts_at = 4;
+  string ends_at = 5;
+  string status = 6;
+  repeated FlashSaleItemResponse items = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message PublicFlashSaleItemResponse {
+  int64 id = 1;
+  int64 product_sku_id = 2;
+  string product_name = 3;
+  optional string image_url = 4;
+  double original_price = 5;
+  double sale_price = 6;
+  string availability = 7;
+  int32 max_quantity_per_user = 8;
+}
+
+message PublicFlashSaleResponse {
+  int64 id = 1;
+  string name = 2;
+  optional string description = 3;
+  string starts_at = 4;
+  string ends_at = 5;
+  string status = 6;
+  repeated PublicFlashSaleItemResponse items = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}

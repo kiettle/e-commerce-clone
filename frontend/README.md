@@ -36,7 +36,7 @@ copy `.env.example` to `.env` and set `VITE_API_BASE_URL`.
 ## Demo path
 
 1. Sign in through the gateway and auth-service gRPC.
-2. Browse or search products returned by product-service.
+2. Browse or search through the gateway, which calls product-service over gRPC.
 3. Optionally create a product and publish its initial stock event.
 4. Add a real SKU to cart, adjust its quantity, and review the snapshot.
 5. Confirm checkout to reserve inventory and create the order.
