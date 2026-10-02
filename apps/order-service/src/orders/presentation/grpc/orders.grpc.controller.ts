@@ -1,0 +1,181 @@
+import { Controller, Logger } from '@nestjs/common';
+import { status as GrpcStatus } from '@grpc/grpc-js';
+import { GrpcMethod, RpcException } from '@nestjs/microservices';
+import { CreateOrderUseCase } from '../../application/use-cases/create-order.use-case';
+import { GetOrderByCheckoutIdUseCase } from '../../application/use-cases/get-order-by-checkout-id.use-case';
+import { OrderEntity } from '../../domain/entities/order.entity';
+import { CheckoutIdConflictError } from '../../domain/errors/checkout-id-conflict.error';
+import { InvalidOrderError } from '../../domain/errors/invalid-order.error';
+import { InvalidOrderStateError } from '../../domain/errors/invalid-order-state.error';
+import { OrderNotFoundError } from '../../domain/errors/order-not-found.error';
+
+interface CreateOrderGrpcRequest {
+  user_id: string;
+  checkout_id?: string;
+  cart_id?: string;
+  request_hash?: string;
+  request_hash_version?: number;
+  items: Array<{
+    product_sku_id: string;
+    product_name: string;
+    price: number;
+    quantity: number;
+    sku_code?: string;
+    image_url?: string;
+    regular_price?: number;
+    price_source?: string;
+    flash_sale_id?: string;
+    flash_sale_item_id?: string;
+    sale_ends_at?: string;
+  }>;
+}
+
+interface CreateOrderGrpcResponse {
+  order_id: string;
+  status: string;
+}
+
+interface GetOrderByCheckoutIdGrpcRequest {
+  checkout_id: string;
+}
+
+@Controller()
+export class OrdersGrpcController {
+  private readonly logger = new Logger(OrdersGrpcController.name);
+  private readonly lostCreateResponseFault = new DemoLostCreateResponseFault();
+
+  constructor(
+    private readonly createOrderUseCase: CreateOrderUseCase,
+    private readonly getOrderByCheckoutIdUseCase: GetOrderByCheckoutIdUseCase,
+  ) {}
+
+  @GrpcMethod('OrderService', 'CreateOrder')
+  async createOrder(request: CreateOrderGrpcRequest): Promise<CreateOrderGrpcResponse> {
+    let order: OrderEntity;
+
+    try {
+      order = await this.createOrderUseCase.execute({
+        userId: parseInteger(request.user_id, 'user_id'),
+        checkoutId: request.checkout_id,
+        cartId: request.cart_id ? parseInteger(request.cart_id, 'cart_id') : undefined,
+        requestHash: request.request_hash,
+        requestHashVersion: request.request_hash_version,
+        items: request.items.map((item) => ({
+          productSkuId: parseInteger(item.product_sku_id, 'product_sku_id'),
+          productName: item.product_name,
+          price: item.price,
+          quantity: item.quantity,
+          skuCode: item.sku_code,
+          imageUrl: item.image_url || null,
+          regularPrice: item.regular_price,
+          priceSource: item.price_source,
+          flashSaleId: parseOptionalPositiveInteger(item.flash_sale_id),
+          flashSaleItemId: parseOptionalPositiveInteger(item.flash_sale_item_id),
+          saleEndsAt: item.sale_ends_at || null,
+        })),
+      });
+    } catch (error) {
+      throw this.toRpcException(error);
+    }
+
+    if (this.lostCreateResponseFault.shouldFail()) {
+      throw createRpcException(
+        GrpcStatus.UNAVAILABLE,
+        'Demo fault: order was created but its response was lost.',
+      );
+    }
+
+    return toGrpcResponse(order);
+  }
+
+  @GrpcMethod('OrderService', 'GetOrderByCheckoutId')
+  async getOrderByCheckoutId(
+    request: GetOrderByCheckoutIdGrpcRequest,
+  ): Promise<CreateOrderGrpcResponse> {
+    try {
+      const order = await this.getOrderByCheckoutIdUseCase.execute(request.checkout_id);
+
+      return toGrpcResponse(order);
+    } catch (error) {
+      throw this.toRpcException(error);
+    }
+  }
+
+  private toRpcException(error: unknown): RpcException {
+    if (error instanceof InvalidOrderError) {
+      return createRpcException(GrpcStatus.INVALID_ARGUMENT, error.message);
+    }
+
+    if (error instanceof CheckoutIdConflictError) {
+      return createRpcException(GrpcStatus.ALREADY_EXISTS, error.message);
+    }
+
+    if (error instanceof OrderNotFoundError) {
+      return createRpcException(GrpcStatus.NOT_FOUND, error.message);
+    }
+
+    if (error instanceof InvalidOrderStateError) {
+      return createRpcException(GrpcStatus.FAILED_PRECONDITION, error.message);
+    }
+
+    this.logger.error('Order gRPC request failed.', error);
+    return createRpcException(GrpcStatus.UNAVAILABLE, 'Order service is unavailable.');
+  }
+}
+
+class DemoLostCreateResponseFault {
+  private readonly failAfterSuccessfulResponses: number | null;
+  private successfulResponses = 0;
+  private triggered = false;
+
+  constructor() {
+    const configuredValue = process.env.ORDER_DEMO_LOST_RESPONSE_AFTER;
+    const parsedValue = Number(configuredValue);
+
+    this.failAfterSuccessfulResponses =
+      process.env.NODE_ENV !== 'production' &&
+      configuredValue != null &&
+      Number.isInteger(parsedValue) &&
+      parsedValue >= 0
+        ? parsedValue
+        : null;
+  }
+
+  shouldFail(): boolean {
+    if (this.failAfterSuccessfulResponses == null || this.triggered) {
+      return false;
+    }
+
+    if (this.successfulResponses < this.failAfterSuccessfulResponses) {
+      this.successfulResponses += 1;
+      return false;
+    }
+
+    this.triggered = true;
+    return true;
+  }
+}
+
+function toGrpcResponse(order: { id: bigint; status: string }): CreateOrderGrpcResponse {
+  return {
+    order_id: order.id.toString(),
+    status: order.status,
+  };
+}
+
+function createRpcException(code: GrpcStatus, message: string): RpcException {
+  return new RpcException({ code, message });
+}
+
+function parseInteger(value: string, field: string): bigint {
+  try {
+    return BigInt(value);
+  } catch {
+    throw new InvalidOrderError(`${field} must be a valid integer.`);
+  }
+}
+
+function parseOptionalPositiveInteger(value: string | undefined): bigint | null {
+  if (!value || value === '0') return null;
+  return parseInteger(value, 'sale identifier');
+}

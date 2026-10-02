@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../prisma/generated/product"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+  DELETED
+}
+
+enum ProductSkuStatus {
+  AVAILABLE
+  OUT_OF_STOCK
+  DISABLED
+  DISCONTINUED
+}
+
+enum ProductOutboxStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  FAILED
+}
+
+enum FlashSaleStatus {
+  DRAFT
+  SCHEDULED
+  CANCELLED
+}
+
+model Category {
+  id        BigInt    @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  slug      String    @db.VarChar(255)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  products  Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          BigInt        @id @default(autoincrement())
+  name        String        @db.VarChar(255)
+  description String?
+  imageUrl    String?       @map("image_url")
+  categoryId  BigInt        @map("category_id")
+  sellerId    BigInt        @map("seller_id")
+  status      ProductStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  category    Category      @relation(fields: [categoryId], references: [id])
+  skus        ProductSku[]
+
+  @@map("products")
+}
+
+model ProductSku {
+  id             BigInt           @id @default(autoincrement())
+  productId      BigInt           @map("product_id")
+  skuCode        String           @map("sku_code") @db.VarChar(255)
+  price          Decimal          @db.Decimal(10, 2)
+  status         ProductSkuStatus @default(AVAILABLE)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  product        Product          @relation(fields: [productId], references: [id])
+  flashSaleItems FlashSaleItem[]
+
+  @@unique([productId, skuCode])
+  @@map("product_skus")
+}
+
+model ProductOutboxEvent {
+  id               String              @id @default(uuid()) @db.Uuid
+  aggregateType    String              @map("aggregate_type") @db.VarChar(100)
+  aggregateId      BigInt              @map("aggregate_id")
+  aggregateVersion Int                 @map("aggregate_version")
+  eventType        String              @map("event_type") @db.VarChar(100)
+  schemaVersion    Int                 @default(1) @map("schema_version")
+  partitionKey     String              @map("partition_key") @db.VarChar(255)
+  occurredAt       DateTime            @default(now()) @map("occurred_at")
+  payload          Json
+  status           ProductOutboxStatus @default(PENDING)
+  attemptCount     Int                 @default(0) @map("attempt_count")
+  nextAttemptAt    DateTime?           @default(now()) @map("next_attempt_at")
+  lastError        String?             @map("last_error") @db.Text
+  leaseOwner       String?             @map("lease_owner") @db.VarChar(255)
+  leaseUntil       DateTime?           @map("lease_until")
+  publishedAt      DateTime?           @map("published_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  @@unique([aggregateType, aggregateId, aggregateVersion], map: "product_outbox_events_aggregate_identity_key")
+  @@index([status, nextAttemptAt, createdAt, id])
+  @@index([status, leaseUntil, createdAt, id])
+  @@index([leaseUntil])
+  @@index([aggregateId, occurredAt])
+  @@map("product_outbox_events")
+}
+
+model FlashSale {
+  id          BigInt          @id @default(autoincrement())
+  name        String          @db.VarChar(255)
+  description String?
+  startsAt    DateTime        @map("starts_at")
+  endsAt      DateTime        @map("ends_at")
+  status      FlashSaleStatus @default(DRAFT)
+  createdBy   BigInt?         @map("created_by")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  items       FlashSaleItem[]
+
+  @@index([status, startsAt, endsAt])
+  @@map("flash_sales")
+}
+
+model FlashSaleItem {
+  id                 BigInt     @id @default(autoincrement())
+  flashSaleId        BigInt     @map("flash_sale_id")
+  productSkuId       BigInt     @map("product_sku_id")
+  originalPrice      Decimal    @map("regular_price") @db.Decimal(10, 2)
+  salePrice          Decimal    @map("sale_price") @db.Decimal(10, 2)
+  stockLimit         Int        @map("quantity")
+  maxQuantityPerUser Int        @default(1) @map("max_quantity_per_user")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  flashSale          FlashSale  @relation(fields: [flashSaleId], references: [id], onDelete: Cascade)
+  productSku         ProductSku @relation(fields: [productSkuId], references: [id], onDelete: Restrict)
+
+  @@unique([flashSaleId, productSkuId])
+  @@index([productSkuId])
+  @@map("flash_sale_items")
+}

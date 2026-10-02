@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../prisma/generated/order"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrderStatus {
+  CREATED
+  CONFIRMED
+  CANCELLED
+  SHIPPED
+  DELIVERED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+model Order {
+  id                 BigInt        @id @default(autoincrement())
+  userId             BigInt        @map("user_id")
+  checkoutId         String?       @unique @map("checkout_id") @db.Uuid
+  cartId             BigInt?       @map("cart_id")
+  requestHash        String?       @map("request_hash") @db.Char(64)
+  requestHashVersion Int?          @map("request_hash_version")
+  totalAmount        Decimal       @map("total_amount") @db.Decimal(10, 2)
+  status             OrderStatus   @default(CREATED)
+  paymentStatus      PaymentStatus @default(PENDING) @map("payment_status")
+  shippingAddress    String?       @map("shipping_address")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+  items              OrderItem[]
+
+  @@index([userId])
+  @@index([cartId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id              BigInt    @id @default(autoincrement())
+  orderId         BigInt    @map("order_id")
+  productName     String    @map("product_name") @db.VarChar(255)
+  productSkuId    BigInt    @map("product_sku_id")
+  skuCode         String    @map("sku_code") @db.VarChar(255)
+  imageUrl        String?   @map("image_url")
+  price           Decimal   @db.Decimal(10, 2)
+  regularPrice    Decimal?  @map("regular_price") @db.Decimal(10, 2)
+  priceSource     String?   @map("price_source") @db.VarChar(32)
+  flashSaleId     BigInt?   @map("flash_sale_id")
+  flashSaleItemId BigInt?   @map("flash_sale_item_id")
+  saleEndsAt      DateTime? @map("sale_ends_at")
+  quantity        Int
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  order           Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([productSkuId])
+  @@map("order_items")
+}

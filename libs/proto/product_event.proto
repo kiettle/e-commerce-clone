@@ -9,6 +9,7 @@ message ProductEvent {
   string event_id = 1;
   EventType event_type = 2;
   google.protobuf.Timestamp occurred_at = 3;
+  int32 schema_version = 4;
 
   oneof payload {
     ProductCreated product_created = 10;

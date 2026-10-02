@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../prisma/generated/cart"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CartStatus {
+  ACTIVE
+  CHECKED_OUT
+  ABANDONED
+}
+
+enum CheckoutStatus {
+  STARTED
+  STOCK_RESERVED
+  ORDER_CONFIRMED
+  STOCK_COMMITTED
+  COMPLETED
+  COMPENSATING
+  FAILED
+  RECONCILIATION_REQUIRED
+}
+
+enum ReconciliationAction {
+  RESERVE_STOCK
+  CHECK_ORDER
+  COMMIT_STOCK
+  RELEASE_STOCK
+  COMPLETE_CART
+}
+
+enum CartItemPriceSource {
+  REGULAR
+  FLASH_SALE
+}
+
+model Cart {
+  id              BigInt           @id @default(autoincrement())
+  userId          BigInt           @map("user_id")
+  status          CartStatus       @default(ACTIVE)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  items           CartItem[]
+  checkoutAttempt CheckoutAttempt?
+
+  @@index([userId])
+  @@index([status])
+  @@map("carts")
+}
+
+model CheckoutAttempt {
+  id                   String                @id @default(uuid()) @db.Uuid
+  userId               BigInt                @map("user_id")
+  cartId               BigInt                @unique @map("cart_id")
+  idempotencyKey       String                @map("idempotency_key") @db.Uuid
+  requestHash          String                @map("request_hash") @db.Char(64)
+  requestHashVersion   Int                   @default(2) @map("request_hash_version")
+  itemsSnapshot        Json                  @map("items_snapshot")
+  status               CheckoutStatus        @default(STARTED)
+  orderId              BigInt?               @map("order_id")
+  retryCount           Int                   @default(0) @map("retry_count")
+  nextRetryAt          DateTime?             @map("next_retry_at")
+  lastError            String?               @map("last_error") @db.Text
+  reconciliationAction ReconciliationAction? @map("reconciliation_action")
+  leaseOwner           String?               @map("lease_owner")
+  leaseUntil           DateTime?             @map("lease_until")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  cart                 Cart                  @relation(fields: [cartId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, idempotencyKey])
+  @@index([status, nextRetryAt])
+  @@map("checkout_attempts")
+}
+
+model CartItem {
+  id                 BigInt              @id @default(autoincrement())
+  cartId             BigInt              @map("cart_id")
+  productId          BigInt              @map("product_id")
+  productName        String              @map("product_name") @db.VarChar(255)
+  imageUrl           String?             @map("image_url")
+  productSkuId       BigInt              @map("product_sku_id")
+  flashSaleId        BigInt?             @map("flash_sale_id")
+  flashSaleItemId    BigInt?             @map("flash_sale_item_id")
+  skuCode            String              @map("sku_code") @db.VarChar(255)
+  price              Decimal             @db.Decimal(10, 2)
+  regularPrice       Decimal             @map("regular_price") @db.Decimal(10, 2)
+  priceSource        CartItemPriceSource @default(REGULAR) @map("price_source")
+  saleEndsAt         DateTime?           @map("sale_ends_at")
+  maxPerUserQuantity Int?                @map("max_per_user_quantity")
+  quantity           Int
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  cart               Cart                @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productSkuId])
+  @@index([cartId])
+  @@index([productSkuId])
+  @@index([flashSaleId])
+  @@map("cart_items")
+}

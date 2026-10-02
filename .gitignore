@@ -1,8 +1,13 @@
 node_modules
 dist
 coverage
+artifacts
 .env
 .env.local
 .DS_Store
 *.log
 prisma/generated
+apps/**/src/**/*.js
+apps/**/src/**/*.js.map
+libs/**/src/**/*.js
+libs/**/src/**/*.js.map

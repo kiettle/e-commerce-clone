@@ -1,0 +1,17 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../prisma/generated/auth"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id       BigInt @id
+  email    String @unique @db.VarChar(255)
+  password String @db.VarChar(255)
+  role     String @db.VarChar(50)
+
+  @@map("users")
+}

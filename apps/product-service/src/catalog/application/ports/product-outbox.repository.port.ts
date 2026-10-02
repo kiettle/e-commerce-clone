@@ -1,0 +1,45 @@
+import { ProductOutboxStatus } from '../enums/product-outbox-status.enum';
+
+export const PRODUCT_OUTBOX_REPOSITORY = Symbol('PRODUCT_OUTBOX_REPOSITORY');
+
+export interface ClaimedProductOutboxEvent {
+  id: string;
+  aggregateId: bigint;
+  eventType: string;
+  schemaVersion: number;
+  partitionKey: string;
+  occurredAt: Date;
+  payload: Record<string, unknown>;
+  attemptCount: number;
+  leaseOwner: string;
+  leaseUntil: Date;
+}
+
+export interface ClaimProductOutboxBatch {
+  limit: number;
+  leaseOwner: string;
+  leaseUntil: Date;
+  now: Date;
+}
+
+export interface FailedProductOutboxAttempt {
+  id: string;
+  leaseOwner: string;
+  error: string;
+  status: ProductOutboxStatus.Pending | ProductOutboxStatus.Failed;
+  nextAttemptAt: Date | null;
+}
+
+export type ReplayProductOutboxResult =
+  | { state: 'REPLAYED' }
+  | { state: 'ALREADY_PENDING' }
+  | { state: 'PROCESSING'; leaseUntil: Date | null }
+  | { state: 'PUBLISHED' }
+  | { state: 'NOT_FOUND' };
+
+export interface ProductOutboxRepositoryPort {
+  claimBatch(request: ClaimProductOutboxBatch): Promise<ClaimedProductOutboxEvent[]>;
+  markPublished(id: string, leaseOwner: string, publishedAt: Date): Promise<boolean>;
+  markFailedAttempt(attempt: FailedProductOutboxAttempt): Promise<boolean>;
+  replayFailed(id: string, nextAttemptAt: Date): Promise<ReplayProductOutboxResult>;
+}

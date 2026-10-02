@@ -1,15 +1,27 @@
 syntax = "proto3";
 
+package order;
+
 option java_multiple_files = true;
 option java_package = "order";
 
 service OrderService {
   rpc CreateOrder (CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrderByCheckoutId (GetOrderByCheckoutIdRequest)
+      returns (CreateOrderResponse);
 }
 
 message CreateOrderRequest {
   int64 user_id = 1;
   repeated CreateOrderItem items = 2;
+  string checkout_id = 3;
+  int64 cart_id = 4;
+  string request_hash = 5;
+  int32 request_hash_version = 6;
+}
+
+message GetOrderByCheckoutIdRequest {
+  string checkout_id = 1;
 }
 
 message CreateOrderItem {
@@ -17,9 +29,16 @@ message CreateOrderItem {
   string product_name = 2;
   double price = 3;
   int32 quantity = 4;
+  string sku_code = 5;
+  string image_url = 6;
+  double regular_price = 7;
+  string price_source = 8;
+  int64 flash_sale_id = 9;
+  int64 flash_sale_item_id = 10;
+  string sale_ends_at = 11;
 }
 
 message CreateOrderResponse {
   int64 order_id = 1;
-  string status = 2; // CREATED, FAILED, etc.
+  string status = 2;
 }

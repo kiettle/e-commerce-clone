@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: true
+  NODE_ENV: test
+  JWT_SECRET: ${{ secrets.CI_JWT_SECRET || 'ci-only-secret-not-for-production' }}
+  AUTH_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/auth_ci_${{ github.run_id }}_${{ github.run_attempt }}
+  PRODUCT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/product_ci_${{ github.run_id }}_${{ github.run_attempt }}
+  INVENTORY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/inventory_ci_${{ github.run_id }}_${{ github.run_attempt }}
+  CART_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/cart_ci_${{ github.run_id }}_${{ github.run_attempt }}
+  ORDER_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/order_ci_${{ github.run_id }}_${{ github.run_attempt }}
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - name: Install backend dependencies
+        run: npm ci
+      - name: Generate Prisma clients
+        run: npm run prisma:generate:all
+      - name: Lint backend
+        run: npm run lint
+      - name: Build all services
+        run: npm run build:all
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+      - name: Lint frontend
+        run: npm run frontend:lint
+      - name: Build frontend
+        run: npm run frontend:build
+
+  unit-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate Prisma clients
+        run: npm run prisma:generate:all
+      - name: Prepare report directories
+        run: mkdir -p artifacts/junit
+      - name: Run unit tests with coverage
+        run: npm run test:coverage -- --reporter=default --reporter=junit --outputFile.junit=artifacts/junit/unit.xml
+      - name: Run contract tests
+        run: npm run test:contract -- --reporter=default --reporter=junit --outputFile.junit=artifacts/junit/contract.xml
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-contract-junit
+          path: artifacts/junit
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload unit coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage
+          path: coverage/unit
+          if-no-files-found: warn
+          retention-days: 14
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Prepare artifact directories
+        run: mkdir -p artifacts/junit artifacts/integration
+      - name: Run PostgreSQL, Kafka, and gRPC integration tests
+        env:
+          INTEGRATION_ARTIFACT_DIR: artifacts/integration
+        run: npm run test:integration -- --reporter=default --reporter=junit --outputFile.junit=artifacts/junit/integration.xml
+      - name: Upload integration JUnit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-junit
+          path: artifacts/junit/integration.xml
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload integration diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-logs
+          path: artifacts/integration
+          if-no-files-found: warn
+          retention-days: 14
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: '2.3.0'
+      - name: Prepare artifact directories
+        run: mkdir -p artifacts/junit artifacts/e2e
+      - name: Run the full gateway suite and load smoke profile
+        env:
+          E2E_ARTIFACT_DIR: artifacts/e2e
+          RUN_LOAD_SMOKE: 1
+          K6_SUMMARY_TREND_STATS: avg,min,med,p(90),p(95),p(99),max
+        run: npm run test:e2e -- --reporter=default --reporter=junit --outputFile.junit=artifacts/junit/e2e.xml
+      - name: Upload E2E JUnit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-junit
+          path: artifacts/junit/e2e.xml
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload load-smoke baseline
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-smoke-baseline
+          path: artifacts/e2e/load-smoke-baseline.md
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload E2E diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: artifacts/e2e
+          if-no-files-found: warn
+          retention-days: 14

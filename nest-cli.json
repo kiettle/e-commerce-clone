@@ -37,6 +37,15 @@
         "tsConfigPath": "apps/product-service/tsconfig.app.json"
       }
     },
+    "product-outbox-cli": {
+      "type": "application",
+      "root": "apps/product-service",
+      "entryFile": "outbox-replay",
+      "sourceRoot": "apps/product-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/product-service/tsconfig.app.json"
+      }
+    },
     "inventory-service": {
       "type": "application",
       "root": "apps/inventory-service",
