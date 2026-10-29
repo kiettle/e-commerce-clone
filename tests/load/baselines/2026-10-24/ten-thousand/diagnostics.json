@@ -1,0 +1,16 @@
+{
+  "source": "artifacts/load-matrix/ten-thousand-attempt-1/buyers-10000-run-1/k6.log",
+  "sourceSha256": "5989d891148dc7732cf87ebac08ea71aad988600cfc89046c73ea828460f6905",
+  "warningCounts": {
+    "warmup GET / connection reset": 208,
+    "warmup GET / broken pipe": 2,
+    "checkout POST / connection reset": 3,
+    "checkout POST / request timeout": 6778
+  },
+  "completionLines": [
+    "running (0m34.2s), 00000/10000 VUs, 10000 complete and 0 interrupted iterations"
+  ],
+  "hostSwapoutDeltaMiB": 1359.25,
+  "hostSwapinDeltaMiB": 23.09375,
+  "notes": "Swap counters are host-wide, not attributable exclusively to k6 or the backend. Raw logs remain in ignored artifacts."
+}

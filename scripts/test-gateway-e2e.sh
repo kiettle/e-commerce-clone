@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_ID="$(date +%s)_$$_${RANDOM}"
 POSTGRES_CONTAINER="ecommerce-gateway-e2e-postgres-${RUN_ID}"
 REDPANDA_CONTAINER="ecommerce-gateway-e2e-redpanda-${RUN_ID}"
+export REDIS_TEST_CONTAINER="ecommerce-gateway-e2e-redis-${RUN_ID}"
+source "$ROOT_DIR/scripts/test-redis-support.sh"
 POSTGRES_IMAGE="${POSTGRES_TEST_IMAGE:-postgres:17-alpine}"
 REDPANDA_IMAGE="${REDPANDA_TEST_IMAGE:-redpandadata/redpanda:v24.3.6}"
 LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ecommerce-gateway-e2e.XXXXXX")"
@@ -61,6 +63,7 @@ print_failure_logs() {
   docker logs --tail 80 "$POSTGRES_CONTAINER" >&2 2>/dev/null || true
   echo '----- redpanda -----' >&2
   docker logs --tail 80 "$REDPANDA_CONTAINER" >&2 2>/dev/null || true
+  docker logs --tail 80 "$REDIS_TEST_CONTAINER" >&2 2>/dev/null || true
 }
 
 capture_logs() {
@@ -77,6 +80,7 @@ capture_logs() {
   done
   docker logs "$POSTGRES_CONTAINER" >"$ARTIFACT_DIR/postgres.log" 2>&1 || true
   docker logs "$REDPANDA_CONTAINER" >"$ARTIFACT_DIR/redpanda.log" 2>&1 || true
+  docker logs "$REDIS_TEST_CONTAINER" >"$ARTIFACT_DIR/redis.log" 2>&1 || true
 }
 
 cleanup() {
@@ -92,6 +96,7 @@ cleanup() {
   done
 
   capture_logs
+  docker rm -f "$REDIS_TEST_CONTAINER" >/dev/null 2>&1 || true
   docker rm -f "$REDPANDA_CONTAINER" >/dev/null 2>&1 || true
   docker rm -f "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
   rm -rf "$LOG_DIR"
@@ -172,6 +177,7 @@ require_command curl
 require_command docker
 require_command node
 require_command npm
+start_test_redis
 
 read -r GATEWAY_PORT AUTH_HTTP_PORT AUTH_GRPC_PORT PRODUCT_PORT PRODUCT_GRPC_PORT INVENTORY_HTTP_PORT \
   INVENTORY_GRPC_PORT CART_PORT ORDER_HTTP_PORT ORDER_GRPC_PORT KAFKA_PORT < <(
@@ -269,7 +275,11 @@ COMMON_KAFKA_ENV=(
   "FLASH_SALE_EVENTS_TOPIC=${FLASH_SALE_TOPIC}"
 )
 
+export GATEWAY_HTTP_MAX_CONNECTIONS="${GATEWAY_HTTP_MAX_CONNECTIONS:-64}"
+export LOAD_STACK_DESCRIPTION="One process per service; ${POSTGRES_IMAGE} with five databases; ${REDPANDA_IMAGE} single broker, one CPU, 512 MiB; checkout recovery poll 60000 ms"
 echo '[gateway-e2e] Starting all six built services...'
+# Prove product-service can start and pass its health check without Redis.
+docker stop "$REDIS_TEST_CONTAINER" >/dev/null
 start_service auth-service \
   NODE_ENV=test PORT="$AUTH_HTTP_PORT" AUTH_GRPC_URL="0.0.0.0:${AUTH_GRPC_PORT}" \
   AUTH_DATABASE_URL="$AUTH_DATABASE_URL" JWT_SECRET="${JWT_SECRET:-gateway-e2e-secret}"
@@ -317,9 +327,12 @@ wait_for_http inventory "http://127.0.0.1:${INVENTORY_HTTP_PORT}/health" "$INVEN
 wait_for_http order "http://127.0.0.1:${ORDER_HTTP_PORT}/health" "$ORDER_PID"
 wait_for_http cart "http://127.0.0.1:${CART_PORT}/health" "$CART_PID"
 wait_for_http gateway "http://127.0.0.1:${GATEWAY_PORT}/health" "$GATEWAY_PID"
+docker start "$REDIS_TEST_CONTAINER" >/dev/null
+wait_for_test_redis
 
 export GATEWAY_E2E_ACTIVE=1
 export E2E_GATEWAY_URL="http://127.0.0.1:${GATEWAY_PORT}"
+export E2E_PRODUCT_HEALTH_URL="http://127.0.0.1:${PRODUCT_PORT}/health"
 export E2E_REDPANDA_CONTAINER="$REDPANDA_CONTAINER"
 export E2E_PRODUCT_TOPIC="$PRODUCT_TOPIC"
 export E2E_FLASH_SALE_TOPIC="$FLASH_SALE_TOPIC"
@@ -340,11 +353,15 @@ if [[ -n "$LOAD_PROFILE_TO_RUN" ]]; then
   fi
   LOAD_BASELINE_OUTPUT="${LOAD_BASELINE_PATH:-${ARTIFACT_DIR:-$LOG_DIR}/load-${LOAD_PROFILE_TO_RUN}-baseline.md}"
   echo "[gateway-e2e] Running the flash-sale ${LOAD_PROFILE_TO_RUN} load profile..."
+  LOAD_RUNNER=scripts/run-flash-sale-load-test.sh
+  if [[ "$LOAD_PROFILE_TO_RUN" == "matrix" ]]; then
+    LOAD_RUNNER=scripts/run-flash-sale-load-matrix.sh
+  fi
   LOAD_GATEWAY_URL="$E2E_GATEWAY_URL" \
   LOAD_ADMIN_EMAIL='admin.e2e@example.test' \
   LOAD_ADMIN_PASSWORD='password123' \
   LOAD_BASELINE_PATH="$LOAD_BASELINE_OUTPUT" \
-    bash scripts/run-flash-sale-load-test.sh "$LOAD_PROFILE_TO_RUN"
+    bash "$LOAD_RUNNER" "$LOAD_PROFILE_TO_RUN"
 fi
 
 echo '[gateway-e2e] Full gateway E2E suite passed.'

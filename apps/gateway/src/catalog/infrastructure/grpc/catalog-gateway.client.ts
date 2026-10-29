@@ -158,7 +158,7 @@ interface ProductGrpcService {
   searchProducts(request: {
     name?: string;
     category_id?: string;
-  }): Observable<{ products: ProductGrpcResponse[] }>;
+  }): Observable<{ products?: ProductGrpcResponse[] }>;
   createProduct(request: CreateProductGrpcRequest): Observable<ProductGrpcResponse>;
   updateProduct(request: UpdateProductGrpcRequest): Observable<ProductGrpcResponse>;
   deleteProduct(request: { product_id: string }): Observable<ProductGrpcResponse>;
@@ -219,7 +219,7 @@ export class CatalogGatewayClient implements OnModuleInit, OnModuleDestroy {
         ...(query.categoryId === undefined ? {} : { category_id: String(query.categoryId) }),
       }),
     );
-    return response.products.map(toProductResponse);
+    return (response.products ?? []).map(toProductResponse);
   }
 
   async createProduct(body: CreateProductRequestDto): Promise<ProductResponseDto> {

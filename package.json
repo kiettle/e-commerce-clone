@@ -62,6 +62,8 @@
     "load:flash-sale:smoke": "bash scripts/run-flash-sale-load-test.sh smoke",
     "load:flash-sale:concurrency": "bash scripts/run-flash-sale-load-test.sh concurrency",
     "load:flash-sale:retry-storm": "bash scripts/run-flash-sale-load-test.sh retry-storm",
+    "load:flash-sale:benchmark": "RUN_LOAD_PROFILE=matrix bash scripts/test-gateway-e2e.sh",
+    "test:load-harness": "node --test tests/load/support/*.test.cjs",
     "load:flash-sale:reads": "bash scripts/run-flash-sale-load-test.sh reads",
     "test:watch": "vitest --config vitest.config.mts"
   },
@@ -82,8 +84,10 @@
     "class-validator": "0.15.1",
     "kafkajs": "2.2.4",
     "protobufjs": "7.6.4",
+    "redis": "6.3.0",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "undici": "8.12.3"
   },
   "devDependencies": {
     "@nestjs/cli": "11.0.23",
@@ -101,7 +105,7 @@
     "vitest": "4.1.11"
   },
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=22.19.0",
     "npm": ">=10.0.0"
   }
 }

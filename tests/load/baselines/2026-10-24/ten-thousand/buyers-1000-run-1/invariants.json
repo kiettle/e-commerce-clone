@@ -1,0 +1,21 @@
+{
+  "profile": "concurrency",
+  "verifiedAt": "2026-10-23T23:01:18.586Z",
+  "expectedSuccesses": 200,
+  "completedCheckouts": 200,
+  "orders": 200,
+  "committedReservations": 200,
+  "businessConflicts": 800,
+  "soldOutConflicts": 800,
+  "purchaseLimitConflicts": 0,
+  "duplicateOrderCount": 0,
+  "duplicateBuyerPurchaseCount": 0,
+  "saleSoldQuantity": 200,
+  "saleReservedQuantity": 0,
+  "normalAvailableQuantity": 800,
+  "normalReservedQuantity": 0,
+  "negativeNormalInventoryRows": 0,
+  "invalidSaleCounterRows": 0,
+  "invariantStatus": "PASSED",
+  "failures": []
+}

@@ -1,0 +1,95 @@
+# Flash-sale concurrency baseline
+
+Captured: 2026-10-23T14:00:55.529Z
+
+This is a local or CI development baseline. It is not a production-capacity claim.
+
+## Machine
+
+| Property | Value |
+| --- | --- |
+| CPU | Apple M2 |
+| Logical CPUs | 8 |
+| Memory | 16.0 GiB |
+| OS | darwin 22.6.0 arm64 |
+| Node.js | v24.21.0 |
+
+Source: `2bc48e656329bb998348c870e6bd2a7a4c1385fc`; dirty working tree: **true**.
+Code SHA-256 (includes untracked source): `193c1d1f9719b0b0e74e8adb037e582d33a78e4b0e0f2ee615b443cba9996b80`.
+k6: k6 v2.3.0 (commit/devel, go1.27.1, darwin/arm64). Docker: 28.2.2; CPUs=8; memoryBytes=8384352256; OS=OrbStack.
+Undici: 8.12.3; gateway HTTP connections/origin: 64.
+Stack: One process per service; postgres:17-alpine with five databases; redpandadata/redpanda:v24.3.6 single broker, one CPU, 512 MiB; checkout recovery poll 60000 ms. HTTP request timeout: 30s.
+
+## Profile
+
+| Setting | Value |
+| --- | ---: |
+| Profile | concurrency |
+| Connection mode | warm |
+| Connection warmup | 3000 ms |
+| Benchmark version | 2 |
+| Executor | per-vu-iterations |
+| Prepared users | 1000 |
+| Sale stock limit | 200 |
+| Base inventory | 1000 |
+| Checkout retries per user | 1 |
+
+## Results
+
+Performance thresholds: **FAILED**.
+k6 exit: 99; verifier exit: 0.
+
+
+| Metric | Result | Initial threshold |
+| --- | ---: | ---: |
+| Unexpected technical failure rate | 0.00% | < 1% |
+| Unexpected HTTP 5xx | 0 | 0 |
+| Business conflicts | 800 | Functional outcome |
+| Sold-out conflicts | 800 | Profile dependent |
+| Purchase-limit conflicts | 0 | Profile dependent |
+| Successful checkout users | 200 | Profile dependent |
+| Burst response window | 3773.00 ms | First send to last response |
+| Request launch spread | 64.00 ms | Not exact simultaneity |
+| Burst response throughput | 265.04 responses/s | Includes sold-out and retries |
+| Burst completed-buyer throughput | 53.01 buyers/s | Excludes sold-out and replays |
+| Successful checkout p95 | 1789.71 ms | Informational |
+| Sold-out/limit response p95 | 3645.98 ms | Informational |
+| Checkout wall-time p95 | 3635.00 ms | < 1,000 ms |
+| Connection warmup failures | 0 | 0 |
+| Buyers missing warmup barrier | 0 | 0 |
+| Pending HTTP 202 | 0 | Not a completed purchase |
+| Whole-scenario request rate | 295.30 requests/s | Informational |
+| Checkout p50 | 2543.57 ms | Informational |
+| Checkout p95 | 3631.93 ms | < 1,000 ms |
+| Checkout p99 | 3695.07 ms | < 2,000 ms |
+| Active-sale read p95 | n/a | < 500 ms |
+| Product read p95 | n/a | Informational |
+
+## Post-run invariants
+
+| Check | Value |
+| --- | ---: |
+| Status | PASSED |
+| Completed checkouts | 200 |
+| Orders | 200 |
+| Committed reservations | 200 |
+| Sold-out responses | 800 |
+| Purchase-limit responses | 0 |
+| Duplicate orders | 0 |
+| Users purchasing twice | 0 |
+| Sale sold quantity | 200 |
+| Sale reserved quantity | 0 |
+| Normal available quantity | 800 |
+| Normal reserved quantity | 0 |
+| Negative normal inventory rows | 0 |
+| Invalid sale counter rows | 0 |
+
+Failures: none.
+
+Command against a fresh prepared stack:
+`LOAD_CONNECTION_MODE=warm LOAD_VUS=1000 LOAD_STOCK_LIMIT=200 LOAD_BASE_INVENTORY=1000 LOAD_RETRIES=1 npm run load:flash-sale:concurrency`
+
+Rates describe a finite burst, not sustained capacity. Setup/login is excluded.
+Latency trends use k6 HTTP duration; wall time also includes connection setup.
+Raw metrics, scenario options, source fingerprint, and verification accompany this report.
+

@@ -1,0 +1,21 @@
+node:net:913
+      throw new ErrnoException(err, 'setTypeOfService');
+      ^
+
+Error: setTypeOfService EINVAL
+    at Socket.setTypeOfService (node:net:913:13)
+    at writeH1 (node:internal/deps/undici/undici:8021:16)
+    at Object.write (node:internal/deps/undici/undici:7758:18)
+    at _resume (node:internal/deps/undici/undici:9691:54)
+    at resume (node:internal/deps/undici/undici:9624:7)
+    at Client.<computed> (node:internal/deps/undici/undici:9401:35)
+    at node:internal/deps/undici/undici:9574:26
+    at Socket.<anonymous> (node:internal/deps/undici/undici:3342:13)
+    at Socket.wrapper (node:events:639:12)
+    at Socket.emit (node:events:514:28) {
+  errno: -22,
+  code: 'EINVAL',
+  syscall: 'setTypeOfService'
+}
+
+Node.js v24.21.0

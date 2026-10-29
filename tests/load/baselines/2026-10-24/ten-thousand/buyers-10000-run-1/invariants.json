@@ -1,0 +1,27 @@
+{
+  "profile": "concurrency",
+  "verifiedAt": "2026-10-23T23:02:37.618Z",
+  "expectedSuccesses": 2000,
+  "completedCheckouts": 2000,
+  "orders": 2000,
+  "committedReservations": 2000,
+  "businessConflicts": 8000,
+  "soldOutConflicts": 1219,
+  "purchaseLimitConflicts": 0,
+  "duplicateOrderCount": 0,
+  "duplicateBuyerPurchaseCount": 0,
+  "saleSoldQuantity": 2000,
+  "saleReservedQuantity": 0,
+  "normalAvailableQuantity": 8000,
+  "normalReservedQuantity": 0,
+  "negativeNormalInventoryRows": 0,
+  "invalidSaleCounterRows": 0,
+  "invariantStatus": "FAILED",
+  "failures": [
+    "checkout-attempt count: expected 10000, received 3796.",
+    "terminal business-conflict count: expected 8000, received 1734.",
+    "technical failure count: expected 0, received 6781.",
+    "k6 business-conflict count: expected 8000, received 1219.",
+    "k6 sold-out conflict count: expected 8000, received 1219."
+  ]
+}

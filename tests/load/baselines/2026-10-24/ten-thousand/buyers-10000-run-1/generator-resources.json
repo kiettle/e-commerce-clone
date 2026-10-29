@@ -1,0 +1,204 @@
+{
+  "startedAt": "2026-10-23T23:01:59.569788+00:00",
+  "elapsedSeconds": 37.278,
+  "rssLimitMiB": 6144,
+  "abortReason": null,
+  "exitCode": 99,
+  "peakChildRssMiB": 2705.34375,
+  "samples": [
+    {
+      "elapsedSeconds": 0.008,
+      "rssMiB": 0.16,
+      "cpuPercent": 0.0
+    },
+    {
+      "elapsedSeconds": 1.012,
+      "rssMiB": 1417.53,
+      "cpuPercent": 465.6
+    },
+    {
+      "elapsedSeconds": 2.024,
+      "rssMiB": 2491.2,
+      "cpuPercent": 425.5
+    },
+    {
+      "elapsedSeconds": 3.03,
+      "rssMiB": 2508.45,
+      "cpuPercent": 102.1
+    },
+    {
+      "elapsedSeconds": 4.034,
+      "rssMiB": 2472.8,
+      "cpuPercent": 16.0
+    },
+    {
+      "elapsedSeconds": 5.038,
+      "rssMiB": 2609.55,
+      "cpuPercent": 249.6
+    },
+    {
+      "elapsedSeconds": 6.046,
+      "rssMiB": 1884.16,
+      "cpuPercent": 6.5
+    },
+    {
+      "elapsedSeconds": 7.052,
+      "rssMiB": 1365.75,
+      "cpuPercent": 5.6
+    },
+    {
+      "elapsedSeconds": 8.06,
+      "rssMiB": 974.95,
+      "cpuPercent": 5.2
+    },
+    {
+      "elapsedSeconds": 9.066,
+      "rssMiB": 928.78,
+      "cpuPercent": 9.5
+    },
+    {
+      "elapsedSeconds": 10.07,
+      "rssMiB": 818.84,
+      "cpuPercent": 6.3
+    },
+    {
+      "elapsedSeconds": 11.073,
+      "rssMiB": 759.16,
+      "cpuPercent": 6.6
+    },
+    {
+      "elapsedSeconds": 12.077,
+      "rssMiB": 639.95,
+      "cpuPercent": 4.9
+    },
+    {
+      "elapsedSeconds": 13.088,
+      "rssMiB": 705.53,
+      "cpuPercent": 5.8
+    },
+    {
+      "elapsedSeconds": 14.091,
+      "rssMiB": 752.28,
+      "cpuPercent": 6.1
+    },
+    {
+      "elapsedSeconds": 15.098,
+      "rssMiB": 795.64,
+      "cpuPercent": 8.3
+    },
+    {
+      "elapsedSeconds": 16.104,
+      "rssMiB": 759.67,
+      "cpuPercent": 8.8
+    },
+    {
+      "elapsedSeconds": 17.111,
+      "rssMiB": 748.16,
+      "cpuPercent": 7.8
+    },
+    {
+      "elapsedSeconds": 18.116,
+      "rssMiB": 706.77,
+      "cpuPercent": 8.1
+    },
+    {
+      "elapsedSeconds": 19.124,
+      "rssMiB": 740.45,
+      "cpuPercent": 7.8
+    },
+    {
+      "elapsedSeconds": 20.13,
+      "rssMiB": 766.08,
+      "cpuPercent": 7.2
+    },
+    {
+      "elapsedSeconds": 21.136,
+      "rssMiB": 739.12,
+      "cpuPercent": 8.3
+    },
+    {
+      "elapsedSeconds": 22.146,
+      "rssMiB": 746.72,
+      "cpuPercent": 7.3
+    },
+    {
+      "elapsedSeconds": 23.151,
+      "rssMiB": 770.39,
+      "cpuPercent": 8.7
+    },
+    {
+      "elapsedSeconds": 24.168,
+      "rssMiB": 747.45,
+      "cpuPercent": 6.3
+    },
+    {
+      "elapsedSeconds": 25.183,
+      "rssMiB": 751.92,
+      "cpuPercent": 3.2
+    },
+    {
+      "elapsedSeconds": 26.19,
+      "rssMiB": 716.95,
+      "cpuPercent": 2.7
+    },
+    {
+      "elapsedSeconds": 27.195,
+      "rssMiB": 694.78,
+      "cpuPercent": 3.7
+    },
+    {
+      "elapsedSeconds": 28.197,
+      "rssMiB": 720.36,
+      "cpuPercent": 4.5
+    },
+    {
+      "elapsedSeconds": 29.201,
+      "rssMiB": 770.28,
+      "cpuPercent": 4.3
+    },
+    {
+      "elapsedSeconds": 30.203,
+      "rssMiB": 819.84,
+      "cpuPercent": 5.7
+    },
+    {
+      "elapsedSeconds": 31.21,
+      "rssMiB": 959.27,
+      "cpuPercent": 16.5
+    },
+    {
+      "elapsedSeconds": 32.221,
+      "rssMiB": 1077.97,
+      "cpuPercent": 15.4
+    },
+    {
+      "elapsedSeconds": 33.231,
+      "rssMiB": 1199.47,
+      "cpuPercent": 14.9
+    },
+    {
+      "elapsedSeconds": 34.236,
+      "rssMiB": 1254.36,
+      "cpuPercent": 14.9
+    },
+    {
+      "elapsedSeconds": 35.249,
+      "rssMiB": 1802.38,
+      "cpuPercent": 103.8
+    },
+    {
+      "elapsedSeconds": 36.272,
+      "rssMiB": 2178.09,
+      "cpuPercent": 49.2
+    }
+  ],
+  "hostMemoryBefore": {
+    "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                               25284.\nPages active:                            163795.\nPages inactive:                          162806.\nPages speculative:                          606.\nPages throttled:                              0.\nPages wired down:                        169210.\nPages purgeable:                             42.\n\"Translation faults\":                3366482264.\nPages copy-on-write:                   31988255.\nPages zero filled:                    712637931.\nPages reactivated:                   1095999989.\nPages purged:                          41221157.\nFile-backed pages:                       108321.\nAnonymous pages:                         218886.\nPages stored in compressor:             1452849.\nPages occupied by compressor:            490098.\nDecompressions:                      1654509503.\nCompressions:                        1803577973.\nPageins:                               53011878.\nPageouts:                               1377865.\nSwapins:                               76588453.\nSwapouts:                              85285019.\n",
+    "memory_pressure": "The system has 17179869184 (1048576 pages with a page size of 16384).\nSystem-wide memory free percentage: 34%\n"
+  },
+  "hostMemoryAfter": {
+    "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                              143078.\nPages active:                            105217.\nPages inactive:                          130014.\nPages speculative:                          200.\nPages throttled:                              0.\nPages wired down:                        175211.\nPages purgeable:                              2.\n\"Translation faults\":                3368230840.\nPages copy-on-write:                   31994393.\nPages zero filled:                    712975752.\nPages reactivated:                   1096756146.\nPages purged:                          41223546.\nFile-backed pages:                       105001.\nAnonymous pages:                         130430.\nPages stored in compressor:             1568313.\nPages occupied by compressor:            458171.\nDecompressions:                      1655432983.\nCompressions:                        1804733921.\nPageins:                               53019057.\nPageouts:                               1378082.\nSwapins:                               76589931.\nSwapouts:                              85372011.\n",
+    "memory_pressure": "The system has 17179869184 (1048576 pages with a page size of 16384).\nSystem-wide memory free percentage: 37%\n"
+  },
+  "notes": "macOS ps RSS sampled once per second. CPU percent can reach 800 on this 8-core host. Peak child RSS includes short-lived monitoring commands. Host counters are cumulative; compare before/after. This does not isolate backend resource use."
+}

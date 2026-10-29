@@ -27,9 +27,16 @@ fi
 cd "$ROOT_DIR"
 
 FIXTURE_PATH="${LOAD_FIXTURE:-$TEMP_DIR/fixture.json}"
-RESULT_PATH="${LOAD_RESULT_PATH:-$TEMP_DIR/k6-result.json}"
-INVARIANT_PATH="$TEMP_DIR/invariants.json"
+ARTIFACT_DIR="${LOAD_ARTIFACT_DIR:-artifacts/load/$(date -u +%Y%m%dT%H%M%SZ)-$$-${PROFILE}}"
+mkdir -p "$ARTIFACT_DIR"
+ARTIFACT_DIR="$(cd "$ARTIFACT_DIR" && pwd)"
+RESULT_PATH="${LOAD_RESULT_PATH:-$ARTIFACT_DIR/k6-result.json}"
+INVARIANT_PATH="$ARTIFACT_DIR/invariants.json"
 BASELINE_PATH="${LOAD_BASELINE_PATH:-tests/load/baselines/${PROFILE}.md}"
+if [[ -e "$RESULT_PATH" || -e "$INVARIANT_PATH" ]]; then
+  echo 'Load evidence already exists; choose fresh LOAD_RESULT_PATH and LOAD_ARTIFACT_DIR.' >&2
+  exit 1
+fi
 
 if [[ -z "${LOAD_FIXTURE:-}" ]]; then
   CREATED_FIXTURE=1
@@ -42,18 +49,25 @@ export K6_SUMMARY_TREND_STATS="${K6_SUMMARY_TREND_STATS:-avg,min,med,p(90),p(95)
 LOAD_PROFILE="$PROFILE" \
 LOAD_FIXTURE="$FIXTURE_PATH" \
 LOAD_RESULT_PATH="$RESULT_PATH" \
-  k6 run tests/load/flash-sale-profiles.k6.mjs
+  k6 run tests/load/flash-sale-profiles.k6.mjs >"$ARTIFACT_DIR/k6.log" 2>&1
 K6_EXIT=$?
+cat "$ARTIFACT_DIR/k6.log"
 
 node tests/load/support/verify-flash-sale-invariants.cjs \
-  "$FIXTURE_PATH" "$RESULT_PATH" "$INVARIANT_PATH"
+  "$FIXTURE_PATH" "$RESULT_PATH" "$INVARIANT_PATH" >"$ARTIFACT_DIR/verification.log" 2>&1
 VERIFY_EXIT=$?
+cat "$ARTIFACT_DIR/verification.log"
 set -e
+if [[ ! -f "$INVARIANT_PATH" ]]; then
+  printf '%s\n' '{"invariantStatus":"ERROR","failures":["Verification could not finish; see verification.log"]}' >"$INVARIANT_PATH"
+fi
 
-if [[ "$VERIFY_EXIT" -eq 0 ]]; then
-  node tests/load/support/write-load-baseline.cjs \
+if [[ -f "$RESULT_PATH" ]]; then
+  LOAD_K6_EXIT="$K6_EXIT" LOAD_VERIFY_EXIT="$VERIFY_EXIT" node tests/load/support/write-load-baseline.cjs \
     "$PROFILE" "$FIXTURE_PATH" "$RESULT_PATH" "$INVARIANT_PATH" "$BASELINE_PATH"
 fi
+
+echo "[load] Raw evidence retained in $ARTIFACT_DIR (fixtures containing tokens are excluded)."
 
 if [[ "$K6_EXIT" -ne 0 ]]; then
   echo "[load] k6 failed or a performance threshold was exceeded." >&2

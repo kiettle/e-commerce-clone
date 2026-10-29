@@ -1,0 +1,21 @@
+{
+  "profile": "smoke",
+  "verifiedAt": "2026-10-23T23:01:01.976Z",
+  "expectedSuccesses": 5,
+  "completedCheckouts": 5,
+  "orders": 5,
+  "committedReservations": 5,
+  "businessConflicts": 0,
+  "soldOutConflicts": 0,
+  "purchaseLimitConflicts": 0,
+  "duplicateOrderCount": 0,
+  "duplicateBuyerPurchaseCount": 0,
+  "saleSoldQuantity": 5,
+  "saleReservedQuantity": 0,
+  "normalAvailableQuantity": 95,
+  "normalReservedQuantity": 0,
+  "negativeNormalInventoryRows": 0,
+  "invalidSaleCounterRows": 0,
+  "invariantStatus": "PASSED",
+  "failures": []
+}

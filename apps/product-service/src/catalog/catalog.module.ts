@@ -1,6 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  PRODUCT_SEARCH_CACHE,
+  ProductSearchCachePort,
+} from './application/ports/product-search-cache.port';
+import { NoopProductSearchCache } from './infrastructure/cache/noop-product-search.cache';
+import { readProductCacheOptions } from './infrastructure/cache/product-cache.config';
+import { RedisProductSearchCache } from './infrastructure/cache/redis-product-search.cache';
+import {
   PRODUCT_CREATION_REPOSITORY,
   ProductCreationRepositoryPort,
 } from './application/ports/product-creation.repository.port';
@@ -53,6 +60,14 @@ import { PrismaProductSkuSnapshotRepository } from './infrastructure/persistence
     ProtobufFlashSaleEventSerializer,
     KafkaProductEventPublisher,
     {
+      provide: PRODUCT_SEARCH_CACHE,
+      useFactory: (config: ConfigService) => {
+        const options = readProductCacheOptions(config);
+        return options ? new RedisProductSearchCache(options) : new NoopProductSearchCache();
+      },
+      inject: [ConfigService],
+    },
+    {
       provide: PRODUCT_SKU_SNAPSHOT_REPOSITORY,
       useExisting: PrismaProductSkuSnapshotRepository,
     },
@@ -94,8 +109,9 @@ import { PrismaProductSkuSnapshotRepository } from './infrastructure/persistence
     },
     {
       provide: SearchProductsUseCase,
-      useFactory: (products: ProductRepositoryPort) => new SearchProductsUseCase(products),
-      inject: [PRODUCT_REPOSITORY],
+      useFactory: (products: ProductRepositoryPort, cache: ProductSearchCachePort) =>
+        new SearchProductsUseCase(products, cache),
+      inject: [PRODUCT_REPOSITORY, PRODUCT_SEARCH_CACHE],
     },
     {
       provide: CreateProductUseCase,

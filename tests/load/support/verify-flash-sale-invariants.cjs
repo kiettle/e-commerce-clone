@@ -19,6 +19,8 @@ const inventory = createClient(
 );
 const order = createClient(OrderPrismaClient, requiredEnvironment('ORDER_DATABASE_URL'));
 
+const failures = [];
+
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
@@ -96,15 +98,13 @@ async function main() {
         persistedOrder.checkoutId !== attempt.id ||
         persistedOrder.userId !== attempt.userId
       ) {
-        throw new Error(`Checkout ${attempt.id} is not linked to its one persisted order.`);
+        failures.push(`Checkout ${attempt.id} is not linked to its one persisted order.`);
       }
     }
     for (const reservation of reservations) {
       const attempt = completedByCart.get(reservation.cartId.toString());
       if (!attempt || reservation.checkoutId !== attempt.id) {
-        throw new Error(
-          `Reservation for cart ${reservation.cartId} is not linked to its checkout.`,
-        );
+        failures.push(`Reservation for cart ${reservation.cartId} is not linked to its checkout.`);
       }
     }
 
@@ -119,13 +119,19 @@ async function main() {
     const k6SuccessfulUsers = metricValue(k6Result, 'checkout_user_successes', 'count');
     const k6BusinessConflicts = metricValue(k6Result, 'business_conflicts', 'count');
     const k6SoldOutConflicts = metricValue(k6Result, 'sold_out_conflicts', 'count');
-    const k6PurchaseLimitConflicts = metricValue(
-      k6Result,
-      'purchase_limit_conflicts',
-      'count',
-    );
+    const k6PurchaseLimitConflicts = metricValue(k6Result, 'purchase_limit_conflicts', 'count');
     assertEqual(0, unexpected5xx, 'unexpected HTTP 5xx count');
     if (!isReadProfile) {
+      assertEqual(
+        fixture.userCount * k6Result.retryCount,
+        metricValue(k6Result, 'checkout_responses', 'count'),
+        'checkout response count',
+      );
+      assertEqual(
+        0,
+        metricValue(k6Result, 'technical_failures', 'count'),
+        'technical failure count',
+      );
       assertEqual(expectedSuccesses, k6SuccessfulUsers, 'k6 successful-user count');
       assertEqual(expectedConflicts, k6BusinessConflicts, 'k6 business-conflict count');
     }
@@ -173,9 +179,11 @@ async function main() {
       normalReservedQuantity: normalStock.reservedQuantity,
       negativeNormalInventoryRows: Number(negativeNormal[0].count),
       invalidSaleCounterRows: Number(negativeSale[0].count),
-      invariantStatus: 'PASSED',
+      invariantStatus: failures.length === 0 ? 'PASSED' : 'FAILED',
+      failures,
     };
     await writeFile(invariantPath, `${JSON.stringify(verification, null, 2)}\n`);
+    if (failures.length > 0) throw new Error(failures.join('\n'));
     console.log(
       `[load] Invariants passed: ${expectedSuccesses} completed, ${expectedConflicts} business conflicts.`,
     );
@@ -190,7 +198,7 @@ function metricValue(result, metric, value) {
 
 function assertEqual(expected, actual, description) {
   if (actual !== expected) {
-    throw new Error(`${description}: expected ${expected}, received ${actual}.`);
+    failures.push(`${description}: expected ${expected}, received ${actual}.`);
   }
 }
 

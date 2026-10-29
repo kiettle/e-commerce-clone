@@ -1,0 +1,39 @@
+{
+  "startedAt": "2026-10-23T23:00:57.659227+00:00",
+  "elapsedSeconds": 4.041,
+  "rssLimitMiB": 6144,
+  "abortReason": null,
+  "exitCode": 0,
+  "peakChildRssMiB": 38.546875,
+  "samples": [
+    {
+      "elapsedSeconds": 0.009,
+      "rssMiB": 0.05,
+      "cpuPercent": 0.0
+    },
+    {
+      "elapsedSeconds": 1.014,
+      "rssMiB": 34.58,
+      "cpuPercent": 0.8
+    },
+    {
+      "elapsedSeconds": 2.024,
+      "rssMiB": 32.41,
+      "cpuPercent": 0.0
+    },
+    {
+      "elapsedSeconds": 3.033,
+      "rssMiB": 32.98,
+      "cpuPercent": 2.9
+    }
+  ],
+  "hostMemoryBefore": {
+    "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                1893.\nPages active:                            234594.\nPages inactive:                          232694.\nPages speculative:                         1455.\nPages throttled:                              0.\nPages wired down:                        143250.\nPages purgeable:                              2.\n\"Translation faults\":                3365112010.\nPages copy-on-write:                   31976302.\nPages zero filled:                    712276967.\nPages reactivated:                   1095428202.\nPages purged:                          41213059.\nFile-backed pages:                       120040.\nAnonymous pages:                         348703.\nPages stored in compressor:             1251857.\nPages occupied by compressor:            396876.\nDecompressions:                      1653880376.\nCompressions:                        1802691389.\nPageins:                               52986427.\nPageouts:                               1377433.\nSwapins:                               76587241.\nSwapouts:                              85276239.\n",
+    "memory_pressure": "The system has 17179869184 (1048576 pages with a page size of 16384).\nSystem-wide memory free percentage: 46%\n"
+  },
+  "hostMemoryAfter": {
+    "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                6174.\nPages active:                            203257.\nPages inactive:                          200200.\nPages speculative:                         2176.\nPages throttled:                              0.\nPages wired down:                        174125.\nPages purgeable:                            380.\n\"Translation faults\":                3365247927.\nPages copy-on-write:                   31977574.\nPages zero filled:                    712300282.\nPages reactivated:                   1095472457.\nPages purged:                          41214083.\nFile-backed pages:                       122088.\nAnonymous pages:                         283545.\nPages stored in compressor:             1296726.\nPages occupied by compressor:            425878.\nDecompressions:                      1653963534.\nCompressions:                        1802824310.\nPageins:                               52988687.\nPageouts:                               1377447.\nSwapins:                               76587617.\nSwapouts:                              85276239.\n",
+    "memory_pressure": "The system has 17179869184 (1048576 pages with a page size of 16384).\nSystem-wide memory free percentage: 40%\n"
+  },
+  "notes": "macOS ps RSS sampled once per second. CPU percent can reach 800 on this 8-core host. Peak child RSS includes short-lived monitoring commands. Host counters are cumulative; compare before/after. This does not isolate backend resource use."
+}

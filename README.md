@@ -15,6 +15,7 @@ This repository is a portfolio backend project for demonstrating:
 - PostgreSQL database ownership per service
 - gRPC service-to-service calls
 - Kafka-compatible product events through Redpanda
+- Redis cache-aside product search with short TTLs and database fallback
 - Durable checkout recovery and compensation for definite failures
 - Unit, contract, PostgreSQL/Kafka/gRPC integration, gateway E2E, and k6 verification
 
@@ -39,6 +40,7 @@ flowchart LR
 
     Auth --- AuthDb[("auth_db")]
     Product --- ProductDb[("product_db")]
+    Product ---|search cache| Redis[("Redis")]
     Cart --- CartDb[("cart_db")]
     Inventory --- InventoryDb[("inventory_db")]
     Order --- OrderDb[("order_db")]
@@ -241,7 +243,7 @@ Shared protobuf files live in `libs/proto`.
 
 Prerequisites:
 
-- Node.js 22 or newer
+- Node.js 22.19.0 or newer
 - npm 10 or newer
 - Docker with the Compose plugin
 
@@ -263,7 +265,7 @@ Start local infrastructure:
 docker compose up -d
 ```
 
-Docker Compose starts the five PostgreSQL databases and Redpanda. The six
+Docker Compose starts the five PostgreSQL databases, Redpanda, and Redis. The six
 application services run on the host; the checked-in application `Dockerfile`
 is not currently a verified production deployment path.
 
@@ -333,8 +335,8 @@ npm run frontend:lint
 
 Tests run in four separately configured lanes. Colocated `*.spec.ts` files are
 unit tests and need no Docker. `*.contract.spec.ts` verifies transport contracts.
-`*.integration.spec.ts` runs serially against disposable PostgreSQL and Redpanda containers.
-`tests/e2e/**/*.e2e.spec.ts` owns full-stack workflows with PostgreSQL, Redpanda,
+`*.integration.spec.ts` runs serially against disposable PostgreSQL, Redis, and Redpanda containers.
+`tests/e2e/**/*.e2e.spec.ts` owns full-stack workflows with PostgreSQL, Redis, Redpanda,
 HTTP, and gRPC. Every runner prints its lane and only discovers its own naming
 pattern. See [tests/README.md](tests/README.md) for the conventions.
 
@@ -346,8 +348,8 @@ GitHub Actions runs four required checks from a fresh checkout:
   builds all services, then installs, lints, and builds the frontend.
 - `unit-contract` runs unit coverage and contract tests and uploads JUnit and
   HTML/JSON coverage artifacts.
-- `integration` starts isolated PostgreSQL and Redpanda containers, applies the
-  real migrations, and runs the repository, Kafka, and gRPC integration suite.
+- `integration` starts isolated PostgreSQL, Redis, and Redpanda containers,
+  applies real migrations, and runs repository, cache, Kafka, and gRPC tests.
 - `e2e` starts the six built services and their infrastructure, runs the gateway
   workflows, and then runs only the short k6 smoke profile.
 
@@ -386,6 +388,128 @@ Open gateway Swagger docs:
 ```text
 http://localhost:4000/docs
 ```
+
+## Redis Product Search Cache
+
+`GET /api/products` uses a cache-aside lookup inside product-service. A valid
+hit skips the PostgreSQL search; a miss queries PostgreSQL and stores the result
+for 30 seconds. Name and category filters have separate hashed keys under
+`product-service:catalog-search:v1:`. Empty results are cached too.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PRODUCT_CACHE_ENABLED` | `false` | Enable caching; `.env.example` sets `true` for the local demo |
+| `PRODUCT_REDIS_URL` | Required when enabled | Local example: `redis://127.0.0.1:6379` |
+| `PRODUCT_CACHE_TTL_SECONDS` | `30` | Expiration from cache population; hits do not renew it |
+| `PRODUCT_CACHE_TIMEOUT_MS` | `100` | Deadline for each Redis operation |
+| `PRODUCT_CACHE_DEBUG` | `false` | Log hit, miss, fill, and bypass events |
+
+Redis is optional: disconnected or timed-out lookups fall back to PostgreSQL,
+failed writes do not fail requests, and the client reconnects in the background.
+The product-service health endpoint remains a liveness check. Disable caching
+and restart product-service to return to database-only reads.
+
+The 100 ms default is a per-command waiting deadline, not an end-to-end HTTP
+deadline. A cache miss can wait for both a GET and a SET, in addition to the
+database query. A failed GET skips population for that request. A command
+already sent to Redis may still complete after its caller times out; the client
+cancels queued commands and bounds its pending command queue to 1,000 entries.
+Database failures on a miss still fail the request; Redis is not a database
+failover mechanism.
+
+Product edits and deletion do not invalidate cached searches. Results can be
+stale until expiry, including missing newly created products. The TTL starts
+when a result is cached, so an in-flight query can populate an older result after
+a concurrent write; this is not a strict 30-second post-write freshness guarantee.
+Cart SKU snapshots, effective flash-sale prices, inventory, checkout, categories,
+and authentication use their existing paths. A cache hit still requires gateway
+authentication.
+
+Search remains unpaginated. Results over 256 KiB bypass storage. Local Redis
+has a 128 MiB limit and evicts least-recently-used keys; persistence is disabled.
+Concurrent misses may duplicate database reads. There is no distributed lock,
+background refresh, local second-level cache, or write invalidation.
+
+### Repeatable cache demo
+
+Complete the local setup and seed data above. If `.env` already exists, add the
+five cache settings from `.env.example` and set `PRODUCT_CACHE_DEBUG=true`.
+Restart product-service, or start it in its own terminal:
+
+```bash
+docker compose up -d redis
+PRODUCT_CACHE_ENABLED=true PRODUCT_REDIS_URL=redis://127.0.0.1:6379 \
+  PRODUCT_CACHE_TTL_SECONDS=30 PRODUCT_CACHE_TIMEOUT_MS=100 \
+  PRODUCT_CACHE_DEBUG=true npm run start:dev:product
+```
+
+With the other services running, use a second terminal. Adjust `GATEWAY_URL`
+if the demo launcher selected another port. These credentials belong to the
+local seeded administrator; the token is captured without printing it.
+
+```bash
+GATEWAY_URL=http://localhost:4000
+CACHE_DEMO_TOKEN="$(curl -fsS "$GATEWAY_URL/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"testuser@test.com","password":"password123"}' \
+  | node -pe 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).token')"
+
+# Derive and clear only the key used by this demo, so the first read is a miss.
+CACHE_DEMO_KEY="$(node -e '
+const hash = require("node:crypto").createHash("sha256")
+  .update(JSON.stringify({name: "iPhone", categoryId: null})).digest("hex");
+process.stdout.write("product-service:catalog-search:v1:" + hash);
+')"
+docker compose exec -T redis redis-cli DEL "$CACHE_DEMO_KEY"
+
+# First request: product_cache_miss followed by product_cache_fill.
+curl -fsS "$GATEWAY_URL/api/products?name=iPhone" -H "Authorization: Bearer $CACHE_DEMO_TOKEN"
+# Repeat immediately: product_cache_hit, with the same response.
+curl -fsS "$GATEWAY_URL/api/products?name=iPhone" -H "Authorization: Bearer $CACHE_DEMO_TOKEN"
+docker compose exec -T redis redis-cli TTL "$CACHE_DEMO_KEY"
+
+# Expiry: the next request misses and fills again.
+sleep 31
+curl -fsS "$GATEWAY_URL/api/products?name=iPhone" -H "Authorization: Bearer $CACHE_DEMO_TOKEN"
+
+# Outage: still HTTP 200, served from PostgreSQL.
+docker compose stop redis
+curl -fsS "$GATEWAY_URL/api/products?name=iPhone" -H "Authorization: Bearer $CACHE_DEMO_TOKEN"
+docker compose start redis
+# After the connection-recovered log, repeat twice to see fill then hit.
+curl -fsS "$GATEWAY_URL/api/products?name=iPhone" -H "Authorization: Bearer $CACHE_DEMO_TOKEN"
+curl -fsS "$GATEWAY_URL/api/products?name=iPhone" -H "Authorization: Bearer $CACHE_DEMO_TOKEN"
+unset CACHE_DEMO_TOKEN
+```
+
+The integration suite uses real Redis and PostgreSQL with a counted repository
+call to prove that two identical reads perform one database search. It also
+checks reuse across independent Redis clients, filter isolation, expiry,
+corrupt payloads, paused-server read/write deadlines, and restart recovery.
+Gateway E2E verifies authentication, stale edits, deletion, outage fallback, and
+startup without Redis. Run `npm run test:integration` and `npm run test:e2e`;
+both runners create isolated Redis containers and override local cache settings.
+HTTP latency alone is not evidence of database-query savings.
+
+For a focused check, run:
+
+```bash
+npm run test:integration -- apps/product-service/src/catalog/infrastructure/cache/redis-product-search.cache.integration.spec.ts
+npm run test:e2e -- -t 'caches authenticated catalog searches'
+```
+
+If no cache events appear, confirm the settings are in the environment used by
+product-service and restart that process; editing `.env.example` does not update
+an existing `.env`. Enable `PRODUCT_CACHE_DEBUG` to see `not_ready`, `read_failed`,
+`write_failed`, or `oversized` bypass reasons. `TTL` returning `-2` means the key
+is absent; `-1` means it has no expiration and was not written normally by this
+adapter. Inspect or delete only the exact demo key, never flush the shared Redis
+instance. Disable debug logging after the demo.
+
+Interview summary: “I cached repeated product searches using Redis cache-aside.
+PostgreSQL stays authoritative. I accepted short-lived stale browse results and
+kept stock, checkout, and effective pricing outside the cache. Redis failure
+returns reads to PostgreSQL, and integration tests prove cache reuse and recovery.”
 
 ## Demo Checkout Flow
 
@@ -442,15 +566,21 @@ Run the short flash-sale k6 smoke profile against an isolated running stack with
 npm run load:smoke
 ```
 
-Run the 100-buyer concurrency profile with `npm run load:flash-sale`. The
-profile-specific command `npm run load:flash-sale:concurrency` remains available.
+Run the 100-buyer burst profile with `npm run load:flash-sale`. For three trials
+each at 100, 500, and 1,000 buyers on a disposable stack, run
+`npm run load:flash-sale:benchmark`. Set `LOAD_CONNECTION_MODE=warm` for a
+separate experiment over established keep-alive connections. The comparison retains throughput, latency,
+failed thresholds, and database verification; it measures finite bursts rather
+than sustained production capacity.
 
 The concurrency, retry-storm, and read-heavy profiles are intended for local or
 dedicated environments. They prepare authentication tokens and carts before
 measurement and always run cross-database invariants afterward. Configuration,
 thresholds, and machine-specific Markdown baselines are documented in
 [tests/load/README.md](tests/load/README.md). Local results are development
-baselines, not production-capacity claims.
+baselines, not production-capacity claims. See the [measured 100/500/1,000-buyer
+results](docs/flash-sale-verification-report.md#october-2026-expanded-load-evidence),
+including failed latency targets and cold-connection limits.
 
 The E2E command briefly stops and restarts its disposable Redpanda container.
 It uses unique Kafka topics, disposable PostgreSQL databases, dynamically
@@ -613,7 +743,8 @@ and the complete demo path.
   complete; Docker Compose is currently for local infrastructure only.
 
 Registration, payment processing, shipping, order history, cancellation,
-search infrastructure, caching, Kubernetes, service mesh, and multi-region
+search infrastructure beyond PostgreSQL filtering, caching beyond product search,
+Kubernetes, service mesh, and multi-region
 operation are intentionally outside the current demo scope.
 
 ## Recommended Next Work

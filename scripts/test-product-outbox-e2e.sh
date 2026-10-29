@@ -264,6 +264,7 @@ start_product_service() {
 
   env \
     NODE_ENV=test \
+    PRODUCT_CACHE_ENABLED=false \
     PORT="$port" \
     PRODUCT_GRPC_URL="0.0.0.0:$grpc_port" \
     PRODUCT_DATABASE_URL="$PRODUCT_DATABASE_URL" \

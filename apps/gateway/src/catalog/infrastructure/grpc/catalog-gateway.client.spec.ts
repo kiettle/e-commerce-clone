@@ -6,6 +6,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { CatalogGatewayClient } from './catalog-gateway.client';
 
 describe('CatalogGatewayClient', () => {
+  it('returns an empty list when protobuf omits the empty products field', async () => {
+    const client = clientWith({ searchProducts: () => of({}) });
+    await expect(client.searchProducts({ name: 'missing' })).resolves.toEqual([]);
+  });
+
   it('maps public product queries to the internal gRPC contract', async () => {
     const searchProducts = vi.fn().mockReturnValue(
       of({

@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
+import { createClient } from 'redis';
+import { productSearchCacheKey } from '../../apps/product-service/src/catalog/infrastructure/cache/product-search-cache.codec';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createIntegrationPrismaClients,
@@ -88,6 +90,84 @@ describe.sequential('full gateway stack', () => {
   afterAll(async () => {
     if (databases) {
       await disconnectIntegrationPrismaClients(databases);
+    }
+  });
+
+  it('caches authenticated catalog searches, expires edits, and survives Redis loss and recovery', async () => {
+    const redisContainer = requiredEnvironment('REDIS_TEST_CONTAINER');
+    expect(redisContainer).toMatch(/^ecommerce-gateway-e2e-redis-/);
+    const redis = createClient({
+      url: requiredEnvironment('PRODUCT_REDIS_URL'),
+      disableOfflineQueue: true,
+    });
+    redis.on('error', () => {});
+    await redis.connect();
+    try {
+      const category = await createCategory('cache');
+      const created = await request<ProductResponse>('/api/products', {
+        method: 'POST',
+        token: adminToken,
+        body: productRequest(category.id, 'Cache Keyboard', [
+          { skuCode: uniqueCode('CACHE'), price: 19.95, quantity: 5 },
+        ]),
+      });
+      expect(created.status).toBe(201);
+      const path = `/api/products?categoryId=${category.id}`;
+      const key = productSearchCacheKey({ categoryId: BigInt(category.id) });
+      const first = await request<ProductResponse[]>(path, { token: customerOneToken });
+      expect(first.status).toBe(200);
+      expect(first.body).toEqual([created.body]);
+      await waitUntil(async () => {
+        await request(path, { token: customerOneToken });
+        return (await redis.exists(key)) === 1;
+      }, 'product cache population');
+      const remainingTtl = await redis.pTTL(key);
+      expect(remainingTtl).toBeGreaterThan(0);
+      expect(remainingTtl).toBeLessThanOrEqual(2000);
+      expect(await request(path, { token: customerTwoToken })).toEqual(first);
+      expect((await request(path)).status).toBe(401);
+
+      const updated = await request(`/api/products/${created.body.id}`, {
+        method: 'PUT',
+        token: adminToken,
+        body: { name: 'Renamed Cache Keyboard' },
+      });
+      expect(updated.status).toBe(200);
+      expect(await request(path, { token: customerOneToken })).toEqual(first);
+      await waitUntil(async () => (await redis.exists(key)) === 0, 'cache expiry');
+      const fresh = await request<ProductResponse[]>(path, { token: customerOneToken });
+      expect(fresh.body[0].name).toBe('Renamed Cache Keyboard');
+
+      await docker('stop', redisContainer);
+      try {
+        const withoutRedis = await request<ProductResponse[]>(path, { token: customerOneToken });
+        expect(withoutRedis).toEqual(fresh);
+        expect((await fetch(requiredEnvironment('E2E_PRODUCT_HEALTH_URL'))).status).toBe(200);
+      } finally {
+        await docker('start', redisContainer);
+      }
+      await waitUntil(async () => {
+        if (!redis.isReady) return false;
+        await request(path, { token: customerOneToken });
+        return (await redis.exists(key)) === 1;
+      }, 'cache recovery');
+      expect(await request(path, { token: customerOneToken })).toEqual(fresh);
+
+      expect(
+        (
+          await request(`/api/products/${created.body.id}`, {
+            method: 'DELETE',
+            token: adminToken,
+          })
+        ).status,
+      ).toBe(200);
+      await waitUntil(async () => (await redis.exists(key)) === 0, 'deleted product cache expiry');
+      const empty = await request<ProductResponse[]>(path, { token: customerOneToken });
+      expect(empty).toEqual({ status: 200, body: [] });
+      expect(await redis.get(key)).toBe('[]');
+      expect(await request(path, { token: customerOneToken })).toEqual(empty);
+    } finally {
+      if (redis.isOpen) redis.destroy();
     }
   });
 

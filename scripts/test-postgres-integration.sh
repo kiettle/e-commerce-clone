@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_ID="$(date +%s)_$$_${RANDOM}"
 CONTAINER_NAME="ecommerce-postgres-integration-${RUN_ID}"
 REDPANDA_CONTAINER_NAME="ecommerce-redpanda-integration-${RUN_ID}"
+export REDIS_TEST_CONTAINER="ecommerce-redis-integration-${RUN_ID}"
+source "$ROOT_DIR/scripts/test-redis-support.sh"
 POSTGRES_IMAGE="${POSTGRES_TEST_IMAGE:-postgres:17-alpine}"
 REDPANDA_IMAGE="${REDPANDA_TEST_IMAGE:-redpandadata/redpanda:v24.3.6}"
 
@@ -23,12 +25,14 @@ capture_logs() {
   mkdir -p "$ARTIFACT_DIR"
   docker logs "$CONTAINER_NAME" >"$ARTIFACT_DIR/postgres.log" 2>&1 || true
   docker logs "$REDPANDA_CONTAINER_NAME" >"$ARTIFACT_DIR/redpanda.log" 2>&1 || true
+  docker logs "$REDIS_TEST_CONTAINER" >"$ARTIFACT_DIR/redis.log" 2>&1 || true
 }
 
 cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
   capture_logs
+  docker rm -f "$REDIS_TEST_CONTAINER" >/dev/null 2>&1 || true
   docker rm -f "$REDPANDA_CONTAINER_NAME" >/dev/null 2>&1 || true
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   exit "$exit_code"
@@ -86,6 +90,7 @@ cd "$ROOT_DIR"
 require_command docker
 require_command npm
 require_command node
+start_test_redis
 
 KAFKA_PORT="$(node -e '
 const net = require("node:net");

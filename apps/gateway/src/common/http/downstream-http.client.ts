@@ -1,4 +1,13 @@
-import { BadGatewayException, HttpException, Injectable } from '@nestjs/common';
+import {
+  BadGatewayException,
+  HttpException,
+  Injectable,
+  type OnModuleDestroy,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+// Use the pinned client: some Node releases bundle an Undici version whose
+// unguarded socket QoS call can crash the process on macOS under contention.
+import { Agent, fetch, type RequestInit, type Response } from 'undici';
 
 type DownstreamHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -13,12 +22,32 @@ interface DownstreamHttpRequest {
 }
 
 @Injectable()
-export class DownstreamHttpClient {
+export class DownstreamHttpClient implements OnModuleDestroy {
+  // An explicit dispatcher also prevents reuse of Node's older global dispatcher.
+  private readonly dispatcher: Agent;
+
+  constructor(config: ConfigService) {
+    const connections = Number(config.get('GATEWAY_HTTP_MAX_CONNECTIONS', 64));
+    if (!Number.isInteger(connections) || connections < 1) {
+      throw new Error('GATEWAY_HTTP_MAX_CONNECTIONS must be a positive integer.');
+    }
+    // Bound sockets per downstream origin; excess calls wait in the dispatcher.
+    // No pipelining or automatic replay of checkout POSTs.
+    this.dispatcher = new Agent({ connections, pipelining: 1 });
+  }
+
+  onModuleDestroy(): Promise<void> {
+    return this.dispatcher.close();
+  }
+
   async request<T>(request: DownstreamHttpRequest): Promise<T> {
     let response: Response;
 
     try {
-      response = await fetch(buildUrl(request), buildRequestInit(request));
+      response = await fetch(buildUrl(request), {
+        ...buildRequestInit(request),
+        dispatcher: this.dispatcher,
+      });
     } catch {
       throw new BadGatewayException(`${request.serviceName} request failed.`);
     }
@@ -103,4 +132,3 @@ function normalizeErrorBody(
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-

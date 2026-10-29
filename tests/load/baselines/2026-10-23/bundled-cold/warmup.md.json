@@ -1,0 +1,457 @@
+{
+  "source": {
+    "commit": "2bc48e656329bb998348c870e6bd2a7a4c1385fc",
+    "dirty": true,
+    "codeSha256": "b135a2202f23acff264b3d58b19a07835cd2c5190318fcc43c2366d21623f0b0"
+  },
+  "environment": {
+    "cpu": "Apple M2",
+    "logicalCpus": 8,
+    "memoryBytes": 17179869184,
+    "os": "darwin 22.6.0 arm64",
+    "node": "v24.21.0",
+    "k6": "k6 v2.3.0 (commit/devel, go1.27.1, darwin/arm64)",
+    "docker": "28.2.2; CPUs=8; memoryBytes=8384352256; OS=OrbStack"
+  },
+  "fixture": {
+    "version": 1,
+    "runId": "1792763276960-9fdbe6bb",
+    "profile": "smoke",
+    "userCount": 5,
+    "stockLimit": 5,
+    "baseInventory": 100,
+    "productId": 8,
+    "productName": "Load test product 1792763276960-9fdbe6bb",
+    "productSkuId": 8,
+    "flashSaleId": 6,
+    "flashSaleItemId": 6,
+    "preparedAt": "2026-10-23T13:47:58.360Z"
+  },
+  "result": {
+    "benchmarkVersion": 2,
+    "profile": "smoke",
+    "options": {
+      "scenarios": {
+        "smoke": {
+          "executor": "per-vu-iterations",
+          "vus": 5,
+          "iterations": 1,
+          "maxDuration": "25s",
+          "exec": "checkoutOnce"
+        }
+      },
+      "thresholds": {
+        "technical_failure_rate": [
+          "rate<0.01"
+        ],
+        "unexpected_5xx": [
+          "count==0"
+        ],
+        "checkout_duration": [
+          "p(95)<1000",
+          "p(99)<2000"
+        ],
+        "checkout_wall_duration": [
+          "p(95)<1000",
+          "p(99)<2000"
+        ],
+        "checks": [
+          "rate==1"
+        ],
+        "checkout_responses": [
+          "count==5"
+        ]
+      }
+    },
+    "retryCount": 1,
+    "generatedAt": "2026-10-23T13:47:58.658Z",
+    "metrics": {
+      "checkout_response_statuses": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 5,
+          "rate": 33.37850557754828
+        }
+      },
+      "iterations": {
+        "contains": "default",
+        "values": {
+          "count": 5,
+          "rate": 33.37850557754828
+        },
+        "type": "counter"
+      },
+      "http_req_tls_handshaking": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(99)": 0,
+          "max": 0,
+          "avg": 0,
+          "min": 0,
+          "med": 0,
+          "p(90)": 0,
+          "p(95)": 0
+        }
+      },
+      "successful_checkout_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(99)": 145.68708,
+          "max": 145.954,
+          "avg": 133.24359999999996,
+          "min": 118.243,
+          "med": 135.052,
+          "p(90)": 143.28480000000002,
+          "p(95)": 144.6194
+        }
+      },
+      "data_received": {
+        "values": {
+          "count": 3744,
+          "rate": 24993.82497646815
+        },
+        "type": "counter",
+        "contains": "data"
+      },
+      "http_req_connecting": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "min": 0.45,
+          "med": 0.505,
+          "p(90)": 0.5186000000000001,
+          "p(95)": 0.5228,
+          "p(99)": 0.5261600000000001,
+          "max": 0.527,
+          "avg": 0.4918
+        }
+      },
+      "http_req_blocked": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(95)": 1.6538,
+          "p(99)": 1.65476,
+          "max": 1.655,
+          "avg": 1.637,
+          "min": 1.611,
+          "med": 1.635,
+          "p(90)": 1.6526
+        }
+      },
+      "http_req_sending": {
+        "values": {
+          "max": 0.355,
+          "avg": 0.26820000000000005,
+          "min": 0.229,
+          "med": 0.255,
+          "p(90)": 0.3194,
+          "p(95)": 0.3372,
+          "p(99)": 0.35144
+        },
+        "type": "trend",
+        "contains": "time"
+      },
+      "checkout_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 133.24359999999996,
+          "min": 118.243,
+          "med": 135.052,
+          "p(90)": 143.28480000000002,
+          "p(95)": 144.6194,
+          "p(99)": 145.68708,
+          "max": 145.954
+        },
+        "thresholds": {
+          "p(95)<1000": {
+            "ok": true
+          },
+          "p(99)<2000": {
+            "ok": true
+          }
+        }
+      },
+      "checks": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "rate": 1,
+          "passes": 5,
+          "fails": 0
+        },
+        "thresholds": {
+          "rate==1": {
+            "ok": true
+          }
+        }
+      },
+      "http_req_receiving": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(99)": 0.23048000000000002,
+          "max": 0.233,
+          "avg": 0.127,
+          "min": 0.053,
+          "med": 0.107,
+          "p(90)": 0.2078,
+          "p(95)": 0.2204
+        }
+      },
+      "checkout_start_offset": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "med": 0,
+          "p(90)": 0,
+          "p(95)": 0,
+          "p(99)": 0,
+          "max": 0,
+          "avg": 0,
+          "min": 0
+        }
+      },
+      "http_req_duration": {
+        "values": {
+          "avg": 133.24359999999996,
+          "min": 118.243,
+          "med": 135.052,
+          "p(90)": 143.28480000000002,
+          "p(95)": 144.6194,
+          "p(99)": 145.68708,
+          "max": 145.954
+        },
+        "type": "trend",
+        "contains": "time"
+      },
+      "http_req_duration{expected_response:true}": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 133.24359999999996,
+          "min": 118.243,
+          "med": 135.052,
+          "p(90)": 143.28480000000002,
+          "p(95)": 144.6194,
+          "p(99)": 145.68708,
+          "max": 145.954
+        }
+      },
+      "technical_failure_rate": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "rate": 0,
+          "passes": 0,
+          "fails": 5
+        },
+        "thresholds": {
+          "rate<0.01": {
+            "ok": true
+          }
+        }
+      },
+      "checkout_responses": {
+        "contains": "default",
+        "values": {
+          "count": 5,
+          "rate": 33.37850557754828
+        },
+        "thresholds": {
+          "count==5": {
+            "ok": true
+          }
+        },
+        "type": "counter"
+      },
+      "http_req_waiting": {
+        "values": {
+          "min": 117.818,
+          "med": 134.733,
+          "p(90)": 142.8956,
+          "p(95)": 144.2568,
+          "p(99)": 145.34575999999998,
+          "max": 145.618,
+          "avg": 132.8484
+        },
+        "type": "trend",
+        "contains": "time"
+      },
+      "checkout_user_successes": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 5,
+          "rate": 33.37850557754828
+        }
+      },
+      "iteration_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(95)": 148.0941164,
+          "p(99)": 149.18098968,
+          "max": 149.452708,
+          "avg": 136.9700334,
+          "min": 122.806,
+          "med": 138.703584,
+          "p(90)": 146.7355248
+        }
+      },
+      "unexpected_5xx": {
+        "contains": "default",
+        "values": {
+          "count": 0,
+          "rate": 0
+        },
+        "thresholds": {
+          "count==0": {
+            "ok": true
+          }
+        },
+        "type": "counter"
+      },
+      "checkout_end_offset": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "med": 138,
+          "p(90)": 146.2,
+          "p(95)": 147.6,
+          "p(99)": 148.72,
+          "max": 149,
+          "avg": 136.4,
+          "min": 122
+        }
+      },
+      "http_reqs": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 5,
+          "rate": 33.37850557754828
+        }
+      },
+      "data_sent": {
+        "type": "counter",
+        "contains": "data",
+        "values": {
+          "count": 2598,
+          "rate": 17343.471498094084
+        }
+      },
+      "checkout_wall_duration": {
+        "thresholds": {
+          "p(95)<1000": {
+            "ok": true
+          },
+          "p(99)<2000": {
+            "ok": true
+          }
+        },
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(90)": 146.2,
+          "p(95)": 147.6,
+          "p(99)": 148.72,
+          "max": 149,
+          "avg": 136.4,
+          "min": 122,
+          "med": 138
+        }
+      },
+      "http_req_failed": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "rate": 0,
+          "passes": 0,
+          "fails": 5
+        }
+      }
+    },
+    "state": {
+      "isStdOutTTY": false,
+      "isStdErrTTY": false,
+      "testRunDurationMs": 149.797
+    }
+  },
+  "invariants": {
+    "profile": "smoke",
+    "verifiedAt": "2026-10-23T13:47:59.323Z",
+    "expectedSuccesses": 5,
+    "completedCheckouts": 5,
+    "orders": 5,
+    "committedReservations": 5,
+    "businessConflicts": 0,
+    "soldOutConflicts": 0,
+    "purchaseLimitConflicts": 0,
+    "duplicateOrderCount": 0,
+    "duplicateBuyerPurchaseCount": 0,
+    "saleSoldQuantity": 5,
+    "saleReservedQuantity": 0,
+    "normalAvailableQuantity": 95,
+    "normalReservedQuantity": 0,
+    "negativeNormalInventoryRows": 0,
+    "invalidSaleCounterRows": 0,
+    "invariantStatus": "PASSED",
+    "failures": []
+  },
+  "measured": {
+    "windowMs": 149,
+    "launchSpreadMs": 0,
+    "burstResponsesPerSecond": 33.557046979865774,
+    "burstCompletedBuyersPerSecond": 33.557046979865774,
+    "thresholds": [
+      {
+        "metric": "checkout_duration",
+        "expression": "p(95)<1000",
+        "ok": true
+      },
+      {
+        "metric": "checkout_duration",
+        "expression": "p(99)<2000",
+        "ok": true
+      },
+      {
+        "metric": "checks",
+        "expression": "rate==1",
+        "ok": true
+      },
+      {
+        "metric": "technical_failure_rate",
+        "expression": "rate<0.01",
+        "ok": true
+      },
+      {
+        "metric": "checkout_responses",
+        "expression": "count==5",
+        "ok": true
+      },
+      {
+        "metric": "unexpected_5xx",
+        "expression": "count==0",
+        "ok": true
+      },
+      {
+        "metric": "checkout_wall_duration",
+        "expression": "p(95)<1000",
+        "ok": true
+      },
+      {
+        "metric": "checkout_wall_duration",
+        "expression": "p(99)<2000",
+        "ok": true
+      }
+    ],
+    "performanceStatus": "PASSED"
+  },
+  "k6ExitCode": 0,
+  "verifierExitCode": 0
+}
