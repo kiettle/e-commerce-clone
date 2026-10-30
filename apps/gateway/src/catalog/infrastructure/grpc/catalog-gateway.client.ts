@@ -1,15 +1,12 @@
+import { grpcDeadline, grpcTimeoutMs, grpcHttpError } from '@app/common';
+import { Metadata, type CallOptions } from '@grpc/grpc-js';
 import {
   BadGatewayException,
-  BadRequestException,
-  ConflictException,
-  HttpException,
   Injectable,
-  NotFoundException,
-  OnModuleDestroy,
+  OnApplicationShutdown,
   OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { status as GrpcStatus } from '@grpc/grpc-js';
 import { ConfigService } from '@nestjs/config';
 import { ClientGrpc, ClientProxyFactory, Transport } from '@nestjs/microservices';
 import { join } from 'node:path';
@@ -153,91 +150,149 @@ interface UpdateFlashSaleGrpcRequest {
 interface ProductGrpcService {
   listCategories(
     request: Record<string, never>,
+    metadata?: Metadata,
+    options?: CallOptions,
   ): Observable<{ categories: CategoryGrpcResponse[] }>;
-  createCategory(request: { name: string; slug?: string }): Observable<CategoryGrpcResponse>;
-  searchProducts(request: {
-    name?: string;
-    category_id?: string;
-  }): Observable<{ products?: ProductGrpcResponse[] }>;
-  createProduct(request: CreateProductGrpcRequest): Observable<ProductGrpcResponse>;
-  updateProduct(request: UpdateProductGrpcRequest): Observable<ProductGrpcResponse>;
-  deleteProduct(request: { product_id: string }): Observable<ProductGrpcResponse>;
-  createFlashSale(request: CreateFlashSaleGrpcRequest): Observable<FlashSaleGrpcResponse>;
-  listFlashSales(request: {
-    status: string;
-  }): Observable<{ flash_sales: PublicFlashSaleGrpcResponse[] }>;
-  updateFlashSale(request: UpdateFlashSaleGrpcRequest): Observable<FlashSaleGrpcResponse>;
-  cancelFlashSale(request: { flash_sale_id: string }): Observable<FlashSaleGrpcResponse>;
-  scheduleFlashSale(request: { flash_sale_id: string }): Observable<FlashSaleGrpcResponse>;
-  getFlashSale(request: {
-    flash_sale_id: string;
-    user_role: string;
-  }): Observable<PublicFlashSaleGrpcResponse>;
-}
-
-interface GrpcErrorLike {
-  code?: number;
-  details?: string;
-  message?: string;
+  createCategory(
+    request: { name: string; slug?: string },
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<CategoryGrpcResponse>;
+  searchProducts(
+    request: {
+      name?: string;
+      category_id?: string;
+    },
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<{ products?: ProductGrpcResponse[] }>;
+  createProduct(
+    request: CreateProductGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<ProductGrpcResponse>;
+  updateProduct(
+    request: UpdateProductGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<ProductGrpcResponse>;
+  deleteProduct(
+    request: { product_id: string },
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<ProductGrpcResponse>;
+  createFlashSale(
+    request: CreateFlashSaleGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<FlashSaleGrpcResponse>;
+  listFlashSales(
+    request: {
+      status: string;
+    },
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<{ flash_sales: PublicFlashSaleGrpcResponse[] }>;
+  updateFlashSale(
+    request: UpdateFlashSaleGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<FlashSaleGrpcResponse>;
+  cancelFlashSale(
+    request: { flash_sale_id: string },
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<FlashSaleGrpcResponse>;
+  scheduleFlashSale(
+    request: { flash_sale_id: string },
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<FlashSaleGrpcResponse>;
+  getFlashSale(
+    request: {
+      flash_sale_id: string;
+      user_role: string;
+    },
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<PublicFlashSaleGrpcResponse>;
 }
 
 @Injectable()
-export class CatalogGatewayClient implements OnModuleInit, OnModuleDestroy {
+export class CatalogGatewayClient implements OnModuleInit, OnApplicationShutdown {
   private client?: CloseableClientGrpc;
   private productService?: ProductGrpcService;
 
-  constructor(private readonly configService: ConfigService) {}
+  private readonly timeoutMs: number;
+
+  constructor(private readonly configService: ConfigService) {
+    this.timeoutMs = grpcTimeoutMs(configService.get('GRPC_REQUEST_TIMEOUT_MS', 5000));
+  }
 
   onModuleInit(): void {
     this.client = this.createClient();
     this.productService = this.client.getService<ProductGrpcService>('ProductService');
   }
 
-  onModuleDestroy(): void {
+  onApplicationShutdown(): void {
     this.client?.close?.();
   }
 
   async listCategories(): Promise<CategoryResponseDto[]> {
-    const response = await this.call(this.getProductService().listCategories({}));
+    const response = await this.call(
+      this.getProductService().listCategories({}, new Metadata(), grpcDeadline(this.timeoutMs)),
+    );
     return response.categories.map(toCategoryResponse);
   }
 
   async createCategory(body: CreateCategoryRequestDto): Promise<CategoryResponseDto> {
     const response = await this.call(
-      this.getProductService().createCategory({
-        name: body.name,
-        ...(body.slug === undefined ? {} : { slug: body.slug }),
-      }),
+      this.getProductService().createCategory(
+        {
+          name: body.name,
+          ...(body.slug === undefined ? {} : { slug: body.slug }),
+        },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return toCategoryResponse(response);
   }
 
   async searchProducts(query: SearchProductsQueryDto): Promise<ProductResponseDto[]> {
     const response = await this.call(
-      this.getProductService().searchProducts({
-        ...(query.name === undefined ? {} : { name: query.name }),
-        ...(query.categoryId === undefined ? {} : { category_id: String(query.categoryId) }),
-      }),
+      this.getProductService().searchProducts(
+        {
+          ...(query.name === undefined ? {} : { name: query.name }),
+          ...(query.categoryId === undefined ? {} : { category_id: String(query.categoryId) }),
+        },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return (response.products ?? []).map(toProductResponse);
   }
 
   async createProduct(body: CreateProductRequestDto): Promise<ProductResponseDto> {
     const response = await this.call(
-      this.getProductService().createProduct({
-        name: body.name,
-        ...(body.description === undefined ? {} : { description: body.description }),
-        ...(body.imageUrl === undefined ? {} : { image_url: body.imageUrl }),
-        category_id: String(body.categoryId),
-        seller_id: String(body.sellerId),
-        status: body.status,
-        skus: body.skus.map((sku) => ({
-          sku_code: sku.skuCode,
-          price: sku.price,
-          status: sku.status,
-          quantity: sku.quantity,
-        })),
-      }),
+      this.getProductService().createProduct(
+        {
+          name: body.name,
+          ...(body.description === undefined ? {} : { description: body.description }),
+          ...(body.imageUrl === undefined ? {} : { image_url: body.imageUrl }),
+          category_id: String(body.categoryId),
+          seller_id: String(body.sellerId),
+          status: body.status,
+          skus: body.skus.map((sku) => ({
+            sku_code: sku.skuCode,
+            price: sku.price,
+            status: sku.status,
+            quantity: sku.quantity,
+          })),
+        },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return toProductResponse(response);
   }
@@ -247,21 +302,29 @@ export class CatalogGatewayClient implements OnModuleInit, OnModuleDestroy {
     body: UpdateProductRequestDto,
   ): Promise<ProductResponseDto> {
     const response = await this.call(
-      this.getProductService().updateProduct({
-        product_id: String(productId),
-        ...(body.name === undefined ? {} : { name: body.name }),
-        ...(body.description === undefined ? {} : { description: body.description }),
-        ...(body.imageUrl === undefined ? {} : { image_url: body.imageUrl }),
-        ...(body.categoryId === undefined ? {} : { category_id: String(body.categoryId) }),
-        ...(body.status === undefined ? {} : { status: body.status }),
-      }),
+      this.getProductService().updateProduct(
+        {
+          product_id: String(productId),
+          ...(body.name === undefined ? {} : { name: body.name }),
+          ...(body.description === undefined ? {} : { description: body.description }),
+          ...(body.imageUrl === undefined ? {} : { image_url: body.imageUrl }),
+          ...(body.categoryId === undefined ? {} : { category_id: String(body.categoryId) }),
+          ...(body.status === undefined ? {} : { status: body.status }),
+        },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return toProductResponse(response);
   }
 
   async deleteProduct(productId: number): Promise<ProductResponseDto> {
     const response = await this.call(
-      this.getProductService().deleteProduct({ product_id: String(productId) }),
+      this.getProductService().deleteProduct(
+        { product_id: String(productId) },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return toProductResponse(response);
   }
@@ -271,21 +334,29 @@ export class CatalogGatewayClient implements OnModuleInit, OnModuleDestroy {
     userId: number,
   ): Promise<FlashSaleResponseDto> {
     const response = await this.call(
-      this.getProductService().createFlashSale({
-        created_by: String(userId),
-        name: body.name,
-        ...(body.description == null ? {} : { description: body.description }),
-        starts_at: body.startsAt,
-        ends_at: body.endsAt,
-        items: body.items.map(toFlashSaleItemRequest),
-      }),
+      this.getProductService().createFlashSale(
+        {
+          created_by: String(userId),
+          name: body.name,
+          ...(body.description == null ? {} : { description: body.description }),
+          starts_at: body.startsAt,
+          ends_at: body.endsAt,
+          items: body.items.map(toFlashSaleItemRequest),
+        },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return toFlashSaleResponse(response);
   }
 
   async listFlashSales(query: ListFlashSalesQueryDto): Promise<PublicFlashSaleResponseDto[]> {
     const response = await this.call(
-      this.getProductService().listFlashSales({ status: query.status }),
+      this.getProductService().listFlashSales(
+        { status: query.status },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return response.flash_sales.map(toPublicFlashSaleResponse);
   }
@@ -295,39 +366,55 @@ export class CatalogGatewayClient implements OnModuleInit, OnModuleDestroy {
     body: UpdateFlashSaleRequestDto,
   ): Promise<FlashSaleResponseDto> {
     const response = await this.call(
-      this.getProductService().updateFlashSale({
-        flash_sale_id: String(flashSaleId),
-        name: body.name,
-        ...(body.description == null ? {} : { description: body.description }),
-        description_is_null: body.description === null,
-        starts_at: body.startsAt,
-        ends_at: body.endsAt,
-        items: body.items.map(toFlashSaleItemRequest),
-      }),
+      this.getProductService().updateFlashSale(
+        {
+          flash_sale_id: String(flashSaleId),
+          name: body.name,
+          ...(body.description == null ? {} : { description: body.description }),
+          description_is_null: body.description === null,
+          starts_at: body.startsAt,
+          ends_at: body.endsAt,
+          items: body.items.map(toFlashSaleItemRequest),
+        },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return toFlashSaleResponse(response);
   }
 
   async cancelFlashSale(flashSaleId: number): Promise<FlashSaleResponseDto> {
     const response = await this.call(
-      this.getProductService().cancelFlashSale({ flash_sale_id: String(flashSaleId) }),
+      this.getProductService().cancelFlashSale(
+        { flash_sale_id: String(flashSaleId) },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return toFlashSaleResponse(response);
   }
 
   async getFlashSale(flashSaleId: number, role: string): Promise<PublicFlashSaleResponseDto> {
     const response = await this.call(
-      this.getProductService().getFlashSale({
-        flash_sale_id: String(flashSaleId),
-        user_role: role,
-      }),
+      this.getProductService().getFlashSale(
+        {
+          flash_sale_id: String(flashSaleId),
+          user_role: role,
+        },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return toPublicFlashSaleResponse(response);
   }
 
   async scheduleFlashSale(flashSaleId: number): Promise<FlashSaleResponseDto> {
     const response = await this.call(
-      this.getProductService().scheduleFlashSale({ flash_sale_id: String(flashSaleId) }),
+      this.getProductService().scheduleFlashSale(
+        { flash_sale_id: String(flashSaleId) },
+        new Metadata(),
+        grpcDeadline(this.timeoutMs),
+      ),
     );
     return toFlashSaleResponse(response);
   }
@@ -358,7 +445,7 @@ export class CatalogGatewayClient implements OnModuleInit, OnModuleDestroy {
     try {
       return await firstValueFrom(operation);
     } catch (error) {
-      throw mapGrpcError(error);
+      throw grpcHttpError(error, 'Product service');
     }
   }
 }
@@ -452,42 +539,4 @@ function toPublicId(value: string): number {
     throw new BadGatewayException('Product service returned an invalid identifier.');
   }
   return result;
-}
-
-function mapGrpcError(error: unknown): HttpException {
-  if (error instanceof HttpException) {
-    return error;
-  }
-  const grpcError = error as GrpcErrorLike;
-  const body = parseGrpcDetails(grpcError.details ?? grpcError.message);
-
-  switch (grpcError.code) {
-    case GrpcStatus.INVALID_ARGUMENT:
-      return new BadRequestException(body);
-    case GrpcStatus.NOT_FOUND:
-      return new NotFoundException(body);
-    case GrpcStatus.ALREADY_EXISTS:
-    case GrpcStatus.FAILED_PRECONDITION:
-      return new ConflictException(body);
-    case GrpcStatus.UNAVAILABLE:
-    case GrpcStatus.DEADLINE_EXCEEDED:
-      return new ServiceUnavailableException('Product service unavailable.');
-    default:
-      return new BadGatewayException('Product service request failed.');
-  }
-}
-
-function parseGrpcDetails(details: string | undefined): string | Record<string, unknown> {
-  if (!details) {
-    return 'Product service request failed.';
-  }
-  try {
-    const parsed: unknown = JSON.parse(details);
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    // Plain gRPC details are already suitable for the public error message.
-  }
-  return details;
 }

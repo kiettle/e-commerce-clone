@@ -1,14 +1,14 @@
+import { grpcDeadline, grpcTimeoutMs, grpcHttpError } from '@app/common';
+import { Metadata } from '@grpc/grpc-js';
 import {
-  BadGatewayException,
   Injectable,
-  OnModuleDestroy,
+  OnApplicationShutdown,
   OnModuleInit,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClientGrpc, ClientProxyFactory, Transport } from '@nestjs/microservices';
-import { status as GrpcStatus } from '@grpc/grpc-js';
 import { join } from 'node:path';
 import { firstValueFrom } from 'rxjs';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
@@ -19,35 +19,35 @@ interface CloseableClientGrpc extends ClientGrpc {
   close?: () => void;
 }
 
-interface GrpcErrorLike {
-  code?: number;
-  details?: string;
-  message?: string;
-}
-
 export interface LoginResult {
   token: string;
 }
 
 @Injectable()
-export class AuthGrpcClient implements OnModuleInit, OnModuleDestroy {
+export class AuthGrpcClient implements OnModuleInit, OnApplicationShutdown {
   private client?: CloseableClientGrpc;
   private authService?: AuthGrpcService;
 
-  constructor(private readonly configService: ConfigService) {}
+  private readonly timeoutMs: number;
+
+  constructor(private readonly configService: ConfigService) {
+    this.timeoutMs = grpcTimeoutMs(configService.get('GRPC_REQUEST_TIMEOUT_MS', 5000));
+  }
 
   onModuleInit(): void {
     this.client = this.createClient();
     this.authService = this.client.getService<AuthGrpcService>('AuthService');
   }
 
-  onModuleDestroy(): void {
+  onApplicationShutdown(): void {
     this.client?.close?.();
   }
 
   async login(request: LoginGrpcRequest): Promise<LoginResult> {
     try {
-      const response = await firstValueFrom(this.getAuthService().login(request));
+      const response = await firstValueFrom(
+        this.getAuthService().login(request, new Metadata(), grpcDeadline(this.timeoutMs)),
+      );
 
       if (!response.success) {
         throw new UnauthorizedException(response.message ?? 'Invalid credentials.');
@@ -55,17 +55,23 @@ export class AuthGrpcClient implements OnModuleInit, OnModuleDestroy {
 
       return { token: response.token };
     } catch (error) {
-      throw mapGrpcClientError(error);
+      throw grpcHttpError(error, 'Auth service');
     }
   }
 
   async validateToken(token: string): Promise<AuthenticatedUser> {
     try {
-      const response = await firstValueFrom(this.getAuthService().validateToken({ token }));
+      const response = await firstValueFrom(
+        this.getAuthService().validateToken(
+          { token },
+          new Metadata(),
+          grpcDeadline(this.timeoutMs),
+        ),
+      );
 
       return mapValidateTokenResponse(response);
     } catch (error) {
-      throw mapGrpcClientError(error);
+      throw grpcHttpError(error, 'Auth service');
     }
   }
 
@@ -109,26 +115,4 @@ function mapValidateTokenResponse(response: ValidateTokenGrpcResponse): Authenti
   }
 
   return { userId, role: response.role };
-}
-
-function mapGrpcClientError(error: unknown): Error {
-  if (error instanceof UnauthorizedException) {
-    return error;
-  }
-
-  const grpcError = error as GrpcErrorLike;
-
-  if (grpcError.code === GrpcStatus.UNAVAILABLE) {
-    return new ServiceUnavailableException('Auth service unavailable.');
-  }
-
-  if (grpcError.code === GrpcStatus.UNAUTHENTICATED) {
-    return new UnauthorizedException(grpcError.details ?? grpcError.message);
-  }
-
-  if (grpcError.code !== undefined) {
-    return new BadGatewayException('Auth service request failed.');
-  }
-
-  return error instanceof Error ? error : new BadGatewayException();
 }

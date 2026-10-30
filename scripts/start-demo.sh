@@ -33,7 +33,7 @@ cleanup() {
     stop_process_tree "${SERVICE_PIDS[$index]}"
   done
 
-  for pid in "${SERVICE_PIDS[@]}"; do
+  for pid in "${SERVICE_PIDS[@]+"${SERVICE_PIDS[@]}"}"; do
     wait "$pid" 2>/dev/null || true
   done
 }
@@ -54,7 +54,7 @@ const net = require("net");
 const server = net.createServer();
 server.once("error", () => process.exit(0));
 server.once("listening", () => server.close(() => process.exit(1)));
-server.listen(Number(process.argv[1]), "127.0.0.1");
+server.listen(Number(process.argv[1]));
 ' "$1"
 }
 
@@ -155,10 +155,22 @@ if [[ ! -f .env ]]; then
   echo "Created .env from .env.example for the local demo."
 fi
 
+# Explicit invocation overrides take precedence over .env demo defaults.
+DEMO_OVERRIDE_NAMES=()
+DEMO_OVERRIDE_VALUES=()
+for name in GATEWAY_PORT PRODUCT_SERVICE_PORT CART_SERVICE_PORT INVENTORY_SERVICE_PORT ORDER_SERVICE_PORT AUTH_SERVICE_PORT AUTH_GRPC_PORT PRODUCT_GRPC_PORT CART_GRPC_PORT INVENTORY_GRPC_PORT ORDER_GRPC_PORT GRPC_REQUEST_TIMEOUT_MS GATEWAY_CHECKOUT_TIMEOUT_MS; do
+  if [[ -n "${!name:-}" ]]; then
+    DEMO_OVERRIDE_NAMES+=("$name")
+    DEMO_OVERRIDE_VALUES+=("${!name}")
+  fi
+done
 set -a
 # shellcheck disable=SC1091
 source .env
 set +a
+for ((index=0; index<${#DEMO_OVERRIDE_NAMES[@]}; index++)); do
+  export "${DEMO_OVERRIDE_NAMES[$index]}=${DEMO_OVERRIDE_VALUES[$index]}"
+done
 
 PRODUCT_SERVICE_PORT="${PRODUCT_SERVICE_PORT:-4001}"
 CART_SERVICE_PORT="${CART_SERVICE_PORT:-4002}"
@@ -166,6 +178,7 @@ INVENTORY_SERVICE_PORT="${INVENTORY_SERVICE_PORT:-4003}"
 ORDER_SERVICE_PORT="${ORDER_SERVICE_PORT:-4004}"
 AUTH_SERVICE_PORT="${AUTH_SERVICE_PORT:-4005}"
 AUTH_GRPC_PORT="${AUTH_GRPC_PORT:-9005}"
+CART_GRPC_PORT="${CART_GRPC_PORT:-9002}"
 PRODUCT_GRPC_PORT="${PRODUCT_GRPC_PORT:-9001}"
 INVENTORY_GRPC_PORT="${INVENTORY_GRPC_PORT:-9003}"
 ORDER_GRPC_PORT="${ORDER_GRPC_PORT:-9004}"
@@ -188,6 +201,7 @@ assert_port_available cart-service "$CART_SERVICE_PORT"
 assert_port_available inventory-service "$INVENTORY_SERVICE_PORT"
 assert_port_available order-service "$ORDER_SERVICE_PORT"
 assert_port_available auth-service "$AUTH_SERVICE_PORT"
+assert_port_available cart-service-gRPC "$CART_GRPC_PORT"
 assert_port_available auth-service-gRPC "$AUTH_GRPC_PORT"
 assert_port_available product-service-gRPC "$PRODUCT_GRPC_PORT"
 assert_port_available inventory-service-gRPC "$INVENTORY_GRPC_PORT"
@@ -226,12 +240,12 @@ echo "Building backend services..."
 npm run build:all
 
 echo "Starting backend services..."
-start_service auth env PORT="$AUTH_SERVICE_PORT" npm run start:prod:auth
-start_service product env PORT="$PRODUCT_SERVICE_PORT" npm run start:prod:product
-start_service inventory env PORT="$INVENTORY_SERVICE_PORT" npm run start:prod:inventory
-start_service cart env PORT="$CART_SERVICE_PORT" npm run start:prod:cart
-start_service order env PORT="$ORDER_SERVICE_PORT" npm run start:prod:order
-start_service gateway env PORT="$GATEWAY_PORT" npm run start:prod:gateway
+start_service auth env PORT="$AUTH_SERVICE_PORT" AUTH_GRPC_URL="0.0.0.0:$AUTH_GRPC_PORT" npm run start:prod:auth
+start_service product env PORT="$PRODUCT_SERVICE_PORT" PRODUCT_GRPC_URL="0.0.0.0:$PRODUCT_GRPC_PORT" npm run start:prod:product
+start_service inventory env PORT="$INVENTORY_SERVICE_PORT" INVENTORY_GRPC_URL="0.0.0.0:$INVENTORY_GRPC_PORT" npm run start:prod:inventory
+start_service cart env PORT="$CART_SERVICE_PORT" CART_GRPC_URL="0.0.0.0:$CART_GRPC_PORT" PRODUCT_GRPC_URL="localhost:$PRODUCT_GRPC_PORT" INVENTORY_GRPC_URL="localhost:$INVENTORY_GRPC_PORT" ORDER_GRPC_URL="localhost:$ORDER_GRPC_PORT" npm run start:prod:cart
+start_service order env PORT="$ORDER_SERVICE_PORT" ORDER_GRPC_URL="0.0.0.0:$ORDER_GRPC_PORT" npm run start:prod:order
+start_service gateway env PORT="$GATEWAY_PORT" AUTH_GRPC_URL="localhost:$AUTH_GRPC_PORT" PRODUCT_GRPC_URL="localhost:$PRODUCT_GRPC_PORT" CART_GRPC_URL="localhost:$CART_GRPC_PORT" npm run start:prod:gateway
 
 echo "Waiting for service health checks..."
 wait_for_service auth "http://localhost:$AUTH_SERVICE_PORT/health" "${SERVICE_PIDS[0]}"

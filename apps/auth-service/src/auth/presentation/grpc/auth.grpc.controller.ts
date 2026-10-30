@@ -1,3 +1,6 @@
+import { status } from '@grpc/grpc-js';
+import { RpcException } from '@nestjs/microservices';
+import { isEmail } from 'class-validator';
 import { Controller } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import { InvalidCredentialsError } from '../../application/errors/invalid-credentials.error';
@@ -36,6 +39,14 @@ export class AuthGrpcController {
 
   @GrpcMethod('AuthService', 'Login')
   async login(request: LoginGrpcRequest): Promise<LoginGrpcResponse> {
+    if (
+      typeof request.email !== 'string' ||
+      !isEmail(request.email) ||
+      typeof request.password !== 'string' ||
+      request.password.length < 8
+    ) {
+      throw new RpcException({ code: status.INVALID_ARGUMENT, message: 'Invalid login input.' });
+    }
     try {
       const result = await this.loginUseCase.execute(request);
 
@@ -53,7 +64,7 @@ export class AuthGrpcController {
         };
       }
 
-      throw error;
+      throw new RpcException({ code: status.INTERNAL, message: 'Internal server error' });
     }
   }
 
@@ -80,7 +91,7 @@ export class AuthGrpcController {
         };
       }
 
-      throw error;
+      throw new RpcException({ code: status.INTERNAL, message: 'Internal server error' });
     }
   }
 }

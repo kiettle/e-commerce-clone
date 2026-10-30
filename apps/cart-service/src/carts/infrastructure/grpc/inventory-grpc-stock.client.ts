@@ -1,4 +1,6 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { grpcDeadline, grpcTimeoutMs } from '@app/common';
+import { Metadata, type CallOptions } from '@grpc/grpc-js';
+import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClientGrpc, ClientProxyFactory, Transport } from '@nestjs/microservices';
 import { join } from 'node:path';
@@ -37,31 +39,53 @@ interface StockOperationGrpcResponse {
 }
 
 interface InventoryGrpcService {
-  reserveStock(request: StockOperationGrpcRequest): Observable<StockOperationGrpcResponse>;
-  releaseStock(request: StockOperationGrpcRequest): Observable<StockOperationGrpcResponse>;
-  commitStock(request: StockOperationGrpcRequest): Observable<StockOperationGrpcResponse>;
+  reserveStock(
+    request: StockOperationGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<StockOperationGrpcResponse>;
+  releaseStock(
+    request: StockOperationGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<StockOperationGrpcResponse>;
+  commitStock(
+    request: StockOperationGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<StockOperationGrpcResponse>;
 }
 
 @Injectable()
-export class InventoryGrpcStockClient implements InventoryStockPort, OnModuleInit, OnModuleDestroy {
+export class InventoryGrpcStockClient
+  implements InventoryStockPort, OnModuleInit, OnApplicationShutdown
+{
   private client?: CloseableClientGrpc;
   private inventoryService?: InventoryGrpcService;
 
-  constructor(private readonly configService: ConfigService) {}
+  private readonly timeoutMs: number;
+
+  constructor(private readonly configService: ConfigService) {
+    this.timeoutMs = grpcTimeoutMs(configService.get('GRPC_REQUEST_TIMEOUT_MS', 5000));
+  }
 
   onModuleInit(): void {
     this.client = this.createClient();
     this.inventoryService = this.client.getService<InventoryGrpcService>('InventoryService');
   }
 
-  onModuleDestroy(): void {
+  onApplicationShutdown(): void {
     this.client?.close?.();
   }
 
   async reserveStock(request: StockOperationRequest): Promise<void> {
     try {
       const response = await firstValueFrom(
-        this.getInventoryService().reserveStock(toGrpcRequest(request)),
+        this.getInventoryService().reserveStock(
+          toGrpcRequest(request),
+          new Metadata(),
+          grpcDeadline(this.timeoutMs),
+        ),
       );
 
       if (!response.success) {
@@ -79,7 +103,11 @@ export class InventoryGrpcStockClient implements InventoryStockPort, OnModuleIni
   async releaseStock(request: StockOperationRequest): Promise<void> {
     try {
       const response = await firstValueFrom(
-        this.getInventoryService().releaseStock(toGrpcRequest(request)),
+        this.getInventoryService().releaseStock(
+          toGrpcRequest(request),
+          new Metadata(),
+          grpcDeadline(this.timeoutMs),
+        ),
       );
 
       if (!response.success) {
@@ -97,7 +125,11 @@ export class InventoryGrpcStockClient implements InventoryStockPort, OnModuleIni
   async commitStock(request: StockOperationRequest): Promise<void> {
     try {
       const response = await firstValueFrom(
-        this.getInventoryService().commitStock(toGrpcRequest(request)),
+        this.getInventoryService().commitStock(
+          toGrpcRequest(request),
+          new Metadata(),
+          grpcDeadline(this.timeoutMs),
+        ),
       );
 
       if (!response.success) {
@@ -145,9 +177,7 @@ export function toInventoryReservationError(
   return new InventoryReservationFailedError(
     response.message ?? 'Inventory reservation failed.',
     'DEFINITE',
-    isInventoryReservationFailureCode(response.error_code)
-      ? response.error_code
-      : undefined,
+    isInventoryReservationFailureCode(response.error_code) ? response.error_code : undefined,
   );
 }
 

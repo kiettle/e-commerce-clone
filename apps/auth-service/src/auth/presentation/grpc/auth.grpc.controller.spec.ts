@@ -44,3 +44,30 @@ describe('AuthGrpcController token validation', () => {
     });
   });
 });
+
+describe('auth gRPC input and failure boundary', () => {
+  it('rejects malformed login input before calling the use case', async () => {
+    const execute = vi.fn();
+    const controller = new AuthGrpcController(
+      { execute } as unknown as LoginUseCase,
+      {} as ValidateTokenUseCase,
+    );
+    const error = await controller
+      .login({ email: 'invalid', password: 'short' })
+      .catch((error) => error);
+    expect(error.getError()).toEqual({ code: 3, message: 'Invalid login input.' });
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it('sanitizes unexpected server failures', async () => {
+    const controller = new AuthGrpcController(
+      {
+        execute: vi.fn().mockRejectedValue(new Error('sensitive database details')),
+      } as unknown as LoginUseCase,
+      {} as ValidateTokenUseCase,
+    );
+    const error = await controller
+      .login({ email: 'demo@example.com', password: 'password123' })
+      .catch((error) => error);
+    expect(error.getError()).toEqual({ code: 13, message: 'Internal server error' });
+  });
+});

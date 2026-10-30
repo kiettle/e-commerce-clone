@@ -21,7 +21,7 @@ const client = new productPackage.ProductService(
 const request = toSnakeCase(JSON.parse(rawRequest));
 const methodName = method[0].toLowerCase() + method.slice(1);
 
-client[methodName](request, (error, response) => {
+client[methodName](request, { deadline: new Date(Date.now() + 5000) }, (error, response) => {
   client.close();
   if (error) {
     process.stderr.write(`${error.details || error.message}\n`);

@@ -30,11 +30,11 @@ type FailureMode =
 
 describe('gRPC client contracts with controlled dependency servers', () => {
   const servers: FakeGrpcServer[] = [];
-  const clients: Array<{ onModuleDestroy(): void }> = [];
+  const clients: Array<{ onApplicationShutdown(): void }> = [];
 
   afterEach(async () => {
     for (const client of clients.splice(0).reverse()) {
-      client.onModuleDestroy();
+      client.onApplicationShutdown();
     }
     await Promise.all(servers.splice(0).map((server) => server.close()));
   });
@@ -270,7 +270,7 @@ describe('gRPC client contracts with controlled dependency servers', () => {
     return server;
   }
 
-  function trackClient<T extends { onModuleDestroy(): void }>(client: T): T {
+  function trackClient<T extends { onApplicationShutdown(): void }>(client: T): T {
     clients.push(client);
     return client;
   }

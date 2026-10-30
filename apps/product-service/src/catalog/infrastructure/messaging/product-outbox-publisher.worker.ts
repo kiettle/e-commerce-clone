@@ -1,3 +1,4 @@
+import { drainOnShutdown } from '@app/common';
 import { Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
@@ -66,17 +67,9 @@ export class ProductOutboxPublisherWorker implements OnApplicationBootstrap, OnM
       return;
     }
 
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([
-      currentPass,
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, this.shutdownTimeoutMs);
-      }),
-    ]);
-
-    if (timeout) {
-      clearTimeout(timeout);
-    }
+    await drainOnShutdown(currentPass, this.shutdownTimeoutMs, (reason) =>
+      this.logger.warn(`Product outbox drain ${reason}; persisted work remains recoverable.`),
+    );
   }
 
   private scheduleNextPass(delayMs: number): void {

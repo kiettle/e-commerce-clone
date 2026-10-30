@@ -1,4 +1,6 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { grpcDeadline, grpcTimeoutMs } from '@app/common';
+import { Metadata, type CallOptions } from '@grpc/grpc-js';
+import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { ConfigService } from '@nestjs/config';
 import { ClientGrpc, ClientProxyFactory, Transport } from '@nestjs/microservices';
@@ -47,25 +49,37 @@ interface GetOrderByCheckoutIdGrpcRequest {
 }
 
 interface OrderGrpcService {
-  createOrder(request: CreateOrderGrpcRequest): Observable<CreateOrderGrpcResponse>;
+  createOrder(
+    request: CreateOrderGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<CreateOrderGrpcResponse>;
   getOrderByCheckoutId(
     request: GetOrderByCheckoutIdGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
   ): Observable<CreateOrderGrpcResponse>;
 }
 
 @Injectable()
-export class OrderGrpcCreatorClient implements OrderCreatorPort, OnModuleInit, OnModuleDestroy {
+export class OrderGrpcCreatorClient
+  implements OrderCreatorPort, OnModuleInit, OnApplicationShutdown
+{
   private client?: CloseableClientGrpc;
   private orderService?: OrderGrpcService;
 
-  constructor(private readonly configService: ConfigService) {}
+  private readonly timeoutMs: number;
+
+  constructor(private readonly configService: ConfigService) {
+    this.timeoutMs = grpcTimeoutMs(configService.get('GRPC_REQUEST_TIMEOUT_MS', 5000));
+  }
 
   onModuleInit(): void {
     this.client = this.createClient();
     this.orderService = this.client.getService<OrderGrpcService>('OrderService');
   }
 
-  onModuleDestroy(): void {
+  onApplicationShutdown(): void {
     this.client?.close?.();
   }
 
@@ -76,7 +90,11 @@ export class OrderGrpcCreatorClient implements OrderCreatorPort, OnModuleInit, O
   ): Promise<OrderCreateResult> {
     try {
       const response = await firstValueFrom(
-        this.getOrderService().createOrder(toGrpcRequest(userId, items, checkoutIdentity)),
+        this.getOrderService().createOrder(
+          toGrpcRequest(userId, items, checkoutIdentity),
+          new Metadata(),
+          grpcDeadline(this.timeoutMs),
+        ),
       );
       const orderId = BigInt(response.order_id);
 
@@ -106,9 +124,13 @@ export class OrderGrpcCreatorClient implements OrderCreatorPort, OnModuleInit, O
   async getOrderByCheckoutId(checkoutId: string): Promise<OrderCreateResult> {
     try {
       const response = await firstValueFrom(
-        this.getOrderService().getOrderByCheckoutId({
-          checkout_id: checkoutId,
-        }),
+        this.getOrderService().getOrderByCheckoutId(
+          {
+            checkout_id: checkoutId,
+          },
+          new Metadata(),
+          grpcDeadline(this.timeoutMs),
+        ),
       );
       const orderId = BigInt(response.order_id);
 

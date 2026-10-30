@@ -5,6 +5,26 @@ problems. Run commands from the repository root. Production services continue
 to respect database ownership; the cross-database queries below are operator
 observations performed separately.
 
+## Internal gRPC and timeout triage
+
+Business HTTP calls go to the gateway only. Cart/auth retain private HTTP health
+checks but no duplicate REST business routes. Check `CART_GRPC_URL` as well as
+the auth/product/inventory/order addresses; client dial addresses must match
+server bind ports. `GRPC_REQUEST_TIMEOUT_MS` defaults to 5000 ms and
+`GATEWAY_CHECKOUT_TIMEOUT_MS` to 30000 ms, greater than the ordinary call limit.
+
+A `503` reports an unavailable dependency. A `504` means the gateway stopped
+waiting, not that the checkout rolled back. Keep the original cart and
+idempotency key, query the owner-scoped checkout status when its ID is known,
+or explicitly retry the same intent. Never manufacture a new key, release
+stock, or mark a checkout failed solely because a call expired. Only `202`
+confirms that cart-service returned a durably recorded pending result.
+
+During shutdown, workers/consumers drain before outgoing clients and Prisma
+close. Drain failures/timeouts are logged; database leases and uncommitted
+messages preserve unfinished work for recovery. HTTP health remains liveness,
+not a gRPC/database readiness guarantee.
+
 ## Safety rules
 
 1. Confirm the environment and exact checkout, event, product, sale, or SKU ID

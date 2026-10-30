@@ -1,4 +1,6 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { grpcDeadline, grpcTimeoutMs } from '@app/common';
+import { Metadata, type CallOptions } from '@grpc/grpc-js';
+import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { status as GrpcStatus } from '@grpc/grpc-js';
 import { ConfigService } from '@nestjs/config';
 import { ClientGrpc, ClientProxyFactory, Transport } from '@nestjs/microservices';
@@ -30,9 +32,13 @@ interface ProductSkuSnapshotGrpcResponse {
 }
 
 interface ProductGrpcService {
-  getProductSkuSnapshot(request: {
-    product_sku_id: string;
-  }): Observable<ProductSkuSnapshotGrpcResponse>;
+  getProductSkuSnapshot(
+    request: {
+      product_sku_id: string;
+    },
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<ProductSkuSnapshotGrpcResponse>;
 }
 
 interface GrpcErrorLike {
@@ -42,27 +48,37 @@ interface GrpcErrorLike {
 }
 
 @Injectable()
-export class ProductGrpcCatalogClient implements ProductCatalogPort, OnModuleInit, OnModuleDestroy {
+export class ProductGrpcCatalogClient
+  implements ProductCatalogPort, OnModuleInit, OnApplicationShutdown
+{
   private client?: CloseableClientGrpc;
   private productService?: ProductGrpcService;
 
-  constructor(private readonly configService: ConfigService) {}
+  private readonly timeoutMs: number;
+
+  constructor(private readonly configService: ConfigService) {
+    this.timeoutMs = grpcTimeoutMs(configService.get('GRPC_REQUEST_TIMEOUT_MS', 5000));
+  }
 
   onModuleInit(): void {
     this.client = this.createClient();
     this.productService = this.client.getService<ProductGrpcService>('ProductService');
   }
 
-  onModuleDestroy(): void {
+  onApplicationShutdown(): void {
     this.client?.close?.();
   }
 
   async getProductSkuSnapshot(productSkuId: bigint): Promise<ProductSkuSnapshot | null> {
     try {
       const snapshot = await firstValueFrom(
-        this.getProductService().getProductSkuSnapshot({
-          product_sku_id: productSkuId.toString(),
-        }),
+        this.getProductService().getProductSkuSnapshot(
+          {
+            product_sku_id: productSkuId.toString(),
+          },
+          new Metadata(),
+          grpcDeadline(this.timeoutMs),
+        ),
       );
 
       return {

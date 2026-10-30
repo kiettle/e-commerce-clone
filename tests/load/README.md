@@ -1,5 +1,11 @@
 # Flash-sale load profiles
 
+Transport note: retained October 23–24 load results used gateway-to-cart HTTP
+forwarding and its Undici connection pool. The current implementation uses
+gRPC with native deadlines. Those historical numbers do not establish gRPC
+capacity; new runs record their transport and RPC timeout configuration.
+
+
 These profiles use [k6](https://grafana.com/docs/k6/latest/) against a running
 gateway and the five service databases. They are separate from Vitest because
 load generation is not a unit-test concern.
@@ -181,12 +187,15 @@ Run measurement-helper regressions with `npm run test:load-harness`.
 
 ## Gateway transport configuration
 
-The gateway uses pinned Undici 8.12.3 with an explicit dispatcher (the default
-Node global dispatcher may still be an older implementation). This avoids the
-reproduced macOS `setTypeOfService EINVAL` process crash fixed in
-[Undici #5547](https://github.com/nodejs/undici/pull/5547). Runtime requirement:
-Node >=22.19.0. `GATEWAY_HTTP_MAX_CONNECTIONS` defaults to 64 per downstream
-origin; excess requests wait in that dispatcher. Checkout POSTs are not
-pipelined or automatically replayed. This bounds outgoing sockets, not the
-number of incoming users or the pending queue. Admission control and uniform
-end-to-end deadlines remain separate work.
+The public API uses HTTP; gateway-to-service business calls use gRPC. Native
+RPC deadlines default to 5 seconds, with a 30-second gateway checkout deadline.
+Configure `GRPC_REQUEST_TIMEOUT_MS` and `GATEWAY_CHECKOUT_TIMEOUT_MS` per process;
+the checkout deadline must exceed the ordinary call limit. Timeouts do not
+prove rollback, and the gateway never automatically replays checkout POSTs.
+The load fixture reuses each buyer's checkout identity for retries.
+
+The older HTTP/Undici pool and its 64-connection limit apply only to the retained
+October 23–24 baseline. gRPC multiplexing changes transport behavior; rerun
+measurements rather than treating those results as current capacity. New evidence
+records `internalTransport` and the configured RPC timeout. Admission control
+and complete workflow budgets remain separate work.

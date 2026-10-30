@@ -6,7 +6,7 @@ import { CartItemPriceSource } from '../../domain/enums/cart-item-price-source.e
 import { CartStatus } from '../../domain/enums/cart-status.enum';
 import { CheckoutStatus } from '../../domain/enums/checkout-status.enum';
 import { ReconciliationAction } from '../../domain/enums/reconciliation-action.enum';
-import { toCartResponse, toCheckoutStatusResponse } from './cart-response.mapper';
+import { toCartResponse, toCheckoutStatusResponse } from './cart-grpc-response.mapper';
 
 describe('toCartResponse', () => {
   it('exposes enough stored pricing context to explain a sale price', () => {
@@ -38,12 +38,12 @@ describe('toCartResponse', () => {
 
     expect(toCartResponse(cart).items[0]).toMatchObject({
       price: 75,
-      regularPrice: 100,
-      priceSource: 'FLASH_SALE',
-      flashSaleId: 50,
-      flashSaleItemId: 501,
-      saleEndsAt: '2026-10-01T10:00:00.000Z',
-      maxQuantityPerUser: 1,
+      regular_price: 100,
+      price_source: 'FLASH_SALE',
+      flash_sale_id: '50',
+      flash_sale_item_id: '501',
+      sale_ends_at: '2026-10-01T10:00:00.000Z',
+      max_quantity_per_user: 1,
     });
   });
 });
@@ -71,13 +71,13 @@ describe('toCheckoutStatusResponse', () => {
     );
 
     expect(toCheckoutStatusResponse(attempt)).toEqual({
-      checkoutId,
-      cartId: 20,
+      checkout_id: checkoutId,
+      cart_id: '20',
       status: CheckoutStatus.ReconciliationRequired,
-      orderId: 501,
-      lastError: 'Checkout is awaiting recovery.',
-      createdAt: '2026-09-16T08:00:00.000Z',
-      updatedAt: '2026-09-16T08:00:05.000Z',
+      order_id: '501',
+      last_error: 'Checkout is awaiting recovery.',
+      created_at: '2026-09-16T08:00:00.000Z',
+      updated_at: '2026-09-16T08:00:05.000Z',
     });
     expect(JSON.stringify(toCheckoutStatusResponse(attempt))).not.toContain('internal-host');
     expect(toCheckoutStatusResponse(attempt)).not.toHaveProperty('leaseOwner');
@@ -99,13 +99,13 @@ describe('toCheckoutStatusResponse', () => {
     });
 
     expect(toCheckoutStatusResponse(attempt)).toEqual({
-      checkoutId,
-      cartId: 20,
+      checkout_id: checkoutId,
+      cart_id: '20',
       status: CheckoutStatus.Started,
-      orderId: null,
-      lastError: null,
-      createdAt: '2026-09-16T08:00:00.000Z',
-      updatedAt: '2026-09-16T08:00:00.000Z',
+      order_id: undefined,
+      last_error: undefined,
+      created_at: '2026-09-16T08:00:00.000Z',
+      updated_at: '2026-09-16T08:00:00.000Z',
     });
   });
 });

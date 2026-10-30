@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  Param,
-  ParseUUIDPipe,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -18,7 +12,7 @@ import {
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
-import { CartGatewayClient } from '../../infrastructure/http/cart-gateway.client';
+import { CartGatewayClient } from '../../infrastructure/grpc/cart-gateway.client';
 import { CheckoutStatusResponseDto } from './dto/cart.dto';
 
 @ApiTags('checkout')

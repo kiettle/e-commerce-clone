@@ -19,6 +19,7 @@ REPLAY_GRPC_PORT="${OUTBOX_REPLAY_GRPC_PORT:-9213}"
 INVENTORY_API_PORT="${OUTBOX_INVENTORY_API_PORT:-4311}"
 INVENTORY_GRPC_PORT="${OUTBOX_INVENTORY_GRPC_PORT:-9311}"
 CART_API_PORT="${SALE_E2E_CART_API_PORT:-4411}"
+CART_GRPC_PORT="${SALE_E2E_CART_GRPC_PORT:-9411}"
 ORDER_API_PORT="${SALE_E2E_ORDER_API_PORT:-4412}"
 ORDER_GRPC_PORT="${SALE_E2E_ORDER_GRPC_PORT:-9412}"
 TOPIC="product-events-integration-$(date +%s)-$$"
@@ -84,23 +85,21 @@ request() {
   HTTP_BODY="$(cat "$RESPONSE_FILE")"
 }
 
-request_as_user() {
-  local method="$1"
-  local url="$2"
-  local user_id="$3"
-  local body="${4:-}"
-  local idempotency_key="${5:-}"
-  local args=(-sS -o "$RESPONSE_FILE" -w '%{http_code}' -X "$method" -H "x-user-id: $user_id")
-
-  if [[ -n "$body" ]]; then
-    args+=(-H 'Content-Type: application/json' -d "$body")
-  fi
-  if [[ -n "$idempotency_key" ]]; then
-    args+=(-H "Idempotency-Key: $idempotency_key")
-  fi
-
-  HTTP_STATUS="$(curl "${args[@]}" "$url")"
-  HTTP_BODY="$(cat "$RESPONSE_FILE")"
+cart_grpc_request() {
+  local method="$1" user_id="$2" resource_id="${3:-}" body="${4:-}" key="${5:-}"
+  local result code
+  result="$(node scripts/call-cart-grpc.cjs "localhost:$CART_GRPC_PORT" "$method" "$user_id" "$resource_id" "$body" "$key")"
+  code="$(json_field grpcCode "$result")"
+  HTTP_BODY="$(node -e 'process.stdout.write(JSON.stringify(JSON.parse(process.argv[1]).body))' "$result")"
+  # Retain the legacy scenario assertions' HTTP-equivalent status vocabulary.
+  # These calls go directly over gRPC; gateway HTTP behavior is tested in test:e2e.
+  case "$code" in
+    0) if [[ "$method" == AddCartItem ]]; then HTTP_STATUS=201
+       elif [[ "$HTTP_BODY" == *RECONCILIATION_REQUIRED* ]]; then HTTP_STATUS=202
+       else HTTP_STATUS=200; fi ;;
+    3) HTTP_STATUS=400 ;; 5) HTTP_STATUS=404 ;; 6|9) HTTP_STATUS=409 ;;
+    14) HTTP_STATUS=503 ;; 4) HTTP_STATUS=504 ;; *) HTTP_STATUS=500 ;;
+  esac
 }
 
 request_as_admin() {
@@ -308,7 +307,7 @@ start_order_service() {
 
 start_cart_service() {
   local log_file="$1"
-  env NODE_ENV=test PORT="$CART_API_PORT" CART_DATABASE_URL="$CART_DATABASE_URL" \
+  env NODE_ENV=test PORT="$CART_API_PORT" CART_GRPC_URL="0.0.0.0:$CART_GRPC_PORT" CART_DATABASE_URL="$CART_DATABASE_URL" \
     PRODUCT_GRPC_URL="localhost:$PRODUCT_GRPC_PORT" \
     INVENTORY_GRPC_URL="localhost:$INVENTORY_GRPC_PORT" \
     ORDER_GRPC_URL="localhost:$ORDER_GRPC_PORT" \
@@ -360,6 +359,7 @@ assert_port_available replay-worker-grpc "$REPLAY_GRPC_PORT"
 assert_port_available inventory-service "$INVENTORY_API_PORT"
 assert_port_available inventory-grpc "$INVENTORY_GRPC_PORT"
 assert_port_available cart-service "$CART_API_PORT"
+assert_port_available cart-service-grpc "$CART_GRPC_PORT"
 assert_port_available order-service "$ORDER_API_PORT"
 assert_port_available order-grpc "$ORDER_GRPC_PORT"
 
@@ -515,12 +515,12 @@ INVENTORY_PID="$LAST_PID"
 wait_for_http inventory-service "http://localhost:$INVENTORY_API_PORT/health" "$INVENTORY_PID" "$TEMP_DIR/flash-inventory.log"
 db_execute postgres-product "$PRODUCT_DATABASE_NAME" \
   "UPDATE \"flash_sales\" SET \"starts_at\" = NOW() - INTERVAL '1 minute', \"ends_at\" = NOW() + INTERVAL '5 minutes' WHERE \"id\" = $FLASH_SALE_ID;"
-request_as_user POST "http://localhost:$CART_API_PORT/api/cart-items" 99 \
+cart_grpc_request AddCartItem 99 "" \
   "{\"productSkuId\":$SKU_ID,\"quantity\":1}"
 assert_equal 201 "$HTTP_STATUS" 'active delayed sale item should be added'
 DELAY_CART_ID="$(json_field id "$HTTP_BODY")"
 assert_equal FLASH_SALE "$(json_field items.0.priceSource "$HTTP_BODY")" 'delayed sale cart item must keep its sale context'
-request_as_user POST "http://localhost:$CART_API_PORT/api/carts/$DELAY_CART_ID/checkout" 99 '' \
+cart_grpc_request CheckoutCart 99 "$DELAY_CART_ID" '' \
   '99999999-9999-4999-8999-999999999999'
 if [[ "$HTTP_STATUS" != 409 ]]; then
   echo "Unexpected delayed-projection checkout response: $HTTP_BODY" >&2
@@ -552,32 +552,32 @@ wait_for_db_value postgres-product "$PRODUCT_DATABASE_NAME" \
   'PUBLISHED:2' 'the flash sale event to be republished after lease expiry'
 assert_equal 1 "$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT COUNT(*) FROM \"processed_flash_sale_events\" WHERE \"event_id\" = '$FLASH_EVENT_ID';")" 'duplicate flash sale delivery must keep one marker'
 assert_equal 1 "$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT COUNT(*) FROM \"flash_sale_stocks\" WHERE \"flash_sale_id\" = $FLASH_SALE_ID;")" 'duplicate flash sale delivery must keep one projection row'
-request_as_user POST "http://localhost:$CART_API_PORT/api/cart-items" 99 \
+cart_grpc_request AddCartItem 99 "" \
   "{\"productSkuId\":$SKU_ID,\"quantity\":1}"
 assert_equal 201 "$HTTP_STATUS" 'the customer should receive a new cart after projection catches up'
 RECOVERED_CART_ID="$(json_field id "$HTTP_BODY")"
-request_as_user POST "http://localhost:$CART_API_PORT/api/carts/$RECOVERED_CART_ID/checkout" 99 '' \
+cart_grpc_request CheckoutCart 99 "$RECOVERED_CART_ID" '' \
   '99999999-9999-4999-8999-999999999998'
 assert_equal 200 "$HTTP_STATUS" 'checkout should succeed after the delayed projection arrives'
 echo "  PASS flashSaleId=$FLASH_SALE_ID eventId=$FLASH_EVENT_ID recoveredCartId=$RECOVERED_CART_ID"
 
 echo 'Scenario D — sale checkout completes through cart, inventory, and order services'
 SALE_SOLD_BEFORE="$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT \"sold_quantity\" FROM \"flash_sale_stocks\" WHERE \"flash_sale_id\" = $FLASH_SALE_ID;")"
-request_as_user POST "http://localhost:$CART_API_PORT/api/cart-items" 101 \
+cart_grpc_request AddCartItem 101 "" \
   "{\"productSkuId\":$SKU_ID,\"quantity\":1}"
 assert_equal 201 "$HTTP_STATUS" 'adding an active sale SKU should return HTTP 201'
 SALE_CART_ID="$(json_field id "$HTTP_BODY")"
 assert_equal FLASH_SALE "$(json_field items.0.priceSource "$HTTP_BODY")" 'cart must store the sale price source'
 assert_equal 49.9 "$(json_field items.0.price "$HTTP_BODY")" 'cart must store the sale price'
 
-request_as_user POST "http://localhost:$CART_API_PORT/api/carts/$SALE_CART_ID/checkout" 101 '' \
+cart_grpc_request CheckoutCart 101 "$SALE_CART_ID" '' \
   '11111111-1111-4111-8111-111111111111'
 for _attempt in {1..50}; do
   if [[ "$HTTP_STATUS" != 202 ]]; then
     break
   fi
   sleep 0.1
-  request_as_user POST "http://localhost:$CART_API_PORT/api/carts/$SALE_CART_ID/checkout" 101 '' \
+  cart_grpc_request CheckoutCart 101 "$SALE_CART_ID" '' \
     '11111111-1111-4111-8111-111111111111'
 done
 assert_equal 200 "$HTTP_STATUS" 'sale checkout should complete'
@@ -604,7 +604,7 @@ db_execute postgres-product "$PRODUCT_DATABASE_NAME" \
   "UPDATE \"flash_sales\" SET \"starts_at\" = NOW() - INTERVAL '1 minute', \"ends_at\" = NOW() + INTERVAL '3 seconds' WHERE \"id\" = $EXPIRY_SALE_ID;"
 db_execute postgres-inventory "$INVENTORY_DATABASE_NAME" \
   "UPDATE \"flash_sale_stocks\" SET \"starts_at\" = NOW() - INTERVAL '1 minute', \"ends_at\" = NOW() + INTERVAL '3 seconds' WHERE \"flash_sale_id\" = $EXPIRY_SALE_ID;"
-request_as_user POST "http://localhost:$CART_API_PORT/api/cart-items" 202 \
+cart_grpc_request AddCartItem 202 "" \
   "{\"productSkuId\":$SECOND_SKU_ID,\"quantity\":1}"
 assert_equal 201 "$HTTP_STATUS" 'active expiring sale item should be added'
 EXPIRY_CART_ID="$(json_field id "$HTTP_BODY")"
@@ -620,7 +620,7 @@ EXPIRY_INVENTORY_BEFORE="$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME
 wait_for_db_value postgres-inventory "$INVENTORY_DATABASE_NAME" \
   "SELECT CASE WHEN NOW() >= \"ends_at\" THEN 1 ELSE 0 END FROM \"flash_sale_stocks\" WHERE \"flash_sale_id\" = $EXPIRY_SALE_ID;" 1 \
   'the inventory sale window to end'
-request_as_user POST "http://localhost:$CART_API_PORT/api/carts/$EXPIRY_CART_ID/checkout" 202 '' \
+cart_grpc_request CheckoutCart 202 "$EXPIRY_CART_ID" '' \
   '22222222-2222-4222-8222-222222222222'
 assert_equal 409 "$HTTP_STATUS" 'expired sale checkout should fail'
 assert_equal FLASH_SALE_ENDED "$(json_field code "$HTTP_BODY")" 'expired sale must return its stable code'
@@ -662,24 +662,26 @@ db_execute postgres-product "$PRODUCT_DATABASE_NAME" \
 db_execute postgres-inventory "$INVENTORY_DATABASE_NAME" \
   "UPDATE \"flash_sale_stocks\" SET \"starts_at\" = NOW() - INTERVAL '1 minute', \"ends_at\" = NOW() + INTERVAL '5 minutes' WHERE \"flash_sale_id\" = $CONCURRENCY_SALE_ID;"
 
-request_as_user POST "http://localhost:$CART_API_PORT/api/cart-items" 301 \
+cart_grpc_request AddCartItem 301 "" \
   "{\"productSkuId\":$SOLD_OUT_SKU_ID,\"quantity\":1}"
 assert_equal 201 "$HTTP_STATUS" 'first sold-out competitor should create a cart'
 FIRST_RACE_CART_ID="$(json_field id "$HTTP_BODY")"
-request_as_user POST "http://localhost:$CART_API_PORT/api/cart-items" 302 \
+cart_grpc_request AddCartItem 302 "" \
   "{\"productSkuId\":$SOLD_OUT_SKU_ID,\"quantity\":1}"
 assert_equal 201 "$HTTP_STATUS" 'second sold-out competitor should create a cart'
 SECOND_RACE_CART_ID="$(json_field id "$HTTP_BODY")"
 
-curl -sS -o "$TEMP_DIR/race-first.json" -w '%{http_code}' -X POST \
-  -H 'x-user-id: 301' -H 'Idempotency-Key: 33333333-3333-4333-8333-333333333333' \
-  "http://localhost:$CART_API_PORT/api/carts/$FIRST_RACE_CART_ID/checkout" \
-  >"$TEMP_DIR/race-first.status" &
+(
+  cart_grpc_request CheckoutCart 301 "$FIRST_RACE_CART_ID" '' '33333333-3333-4333-8333-333333333333'
+  printf '%s' "$HTTP_BODY" >"$TEMP_DIR/race-first.json"
+  printf '%s' "$HTTP_STATUS" >"$TEMP_DIR/race-first.status"
+) &
 FIRST_RACE_PID=$!
-curl -sS -o "$TEMP_DIR/race-second.json" -w '%{http_code}' -X POST \
-  -H 'x-user-id: 302' -H 'Idempotency-Key: 44444444-4444-4444-8444-444444444444' \
-  "http://localhost:$CART_API_PORT/api/carts/$SECOND_RACE_CART_ID/checkout" \
-  >"$TEMP_DIR/race-second.status" &
+(
+  cart_grpc_request CheckoutCart 302 "$SECOND_RACE_CART_ID" '' '44444444-4444-4444-8444-444444444444'
+  printf '%s' "$HTTP_BODY" >"$TEMP_DIR/race-second.json"
+  printf '%s' "$HTTP_STATUS" >"$TEMP_DIR/race-second.status"
+) &
 SECOND_RACE_PID=$!
 wait "$FIRST_RACE_PID"
 wait "$SECOND_RACE_PID"
@@ -697,19 +699,19 @@ assert_equal 0 "$(db_value postgres-inventory "$INVENTORY_DATABASE_NAME" "SELECT
 echo "  PASS flashSaleId=$CONCURRENCY_SALE_ID code=FLASH_SALE_SOLD_OUT"
 
 echo 'Scenario G — one user cannot claim the same sale item through a second cart'
-request_as_user POST "http://localhost:$CART_API_PORT/api/cart-items" 401 \
+cart_grpc_request AddCartItem 401 "" \
   "{\"productSkuId\":$USER_LIMIT_SKU_ID,\"quantity\":1}"
 assert_equal 201 "$HTTP_STATUS" 'first per-user cart should be created'
 FIRST_LIMIT_CART_ID="$(json_field id "$HTTP_BODY")"
-request_as_user POST "http://localhost:$CART_API_PORT/api/carts/$FIRST_LIMIT_CART_ID/checkout" 401 '' \
+cart_grpc_request CheckoutCart 401 "$FIRST_LIMIT_CART_ID" '' \
   '55555555-5555-4555-8555-555555555555'
 assert_equal 200 "$HTTP_STATUS" 'the first per-user checkout should succeed'
 
-request_as_user POST "http://localhost:$CART_API_PORT/api/cart-items" 401 \
+cart_grpc_request AddCartItem 401 "" \
   "{\"productSkuId\":$USER_LIMIT_SKU_ID,\"quantity\":1}"
 assert_equal 201 "$HTTP_STATUS" 'a checked-out cart should allow a new active cart'
 SECOND_LIMIT_CART_ID="$(json_field id "$HTTP_BODY")"
-request_as_user POST "http://localhost:$CART_API_PORT/api/carts/$SECOND_LIMIT_CART_ID/checkout" 401 '' \
+cart_grpc_request CheckoutCart 401 "$SECOND_LIMIT_CART_ID" '' \
   '66666666-6666-4666-8666-666666666666'
 assert_equal 409 "$HTTP_STATUS" 'the second per-user checkout should fail'
 assert_equal FLASH_SALE_LIMIT_REACHED "$(json_field code "$HTTP_BODY")" 'the second cart must report the per-user limit'

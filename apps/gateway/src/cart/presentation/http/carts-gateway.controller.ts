@@ -28,7 +28,7 @@ import {
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
-import { CartGatewayClient } from '../../infrastructure/http/cart-gateway.client';
+import { CartGatewayClient } from '../../infrastructure/grpc/cart-gateway.client';
 import {
   CartResponseDto,
   CheckoutCartResponseDto,
@@ -46,9 +46,7 @@ export class CartsGatewayController {
   @ApiOperation({ summary: 'Get the authenticated user active cart' })
   @ApiOkResponse({ type: CartResponseDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid token.' })
-  getActiveCart(
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<CartResponseDto> {
+  getActiveCart(@CurrentUser() user: AuthenticatedUser): Promise<CartResponseDto> {
     return this.cartClient.getActiveCart(user.userId);
   }
 
@@ -76,11 +74,7 @@ export class CartsGatewayController {
     @Res({ passthrough: true }) response: { status(code: number): unknown },
   ): Promise<CheckoutCartResponseDto | CheckoutPendingResponseDto> {
     assertValidIdempotencyKey(idempotencyKey);
-    const result = await this.cartClient.checkoutCart(
-      user.userId,
-      cartId,
-      idempotencyKey,
-    );
+    const result = await this.cartClient.checkoutCart(user.userId, cartId, idempotencyKey);
 
     if (result.status === 'RECONCILIATION_REQUIRED') {
       response.status(202);
@@ -90,15 +84,12 @@ export class CartsGatewayController {
   }
 }
 
-const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function assertValidIdempotencyKey(
   idempotencyKey: string | undefined,
 ): asserts idempotencyKey is string {
   if (!idempotencyKey || !UUID_V4_PATTERN.test(idempotencyKey)) {
-    throw new BadRequestException(
-      'Idempotency-Key header must be a valid UUID v4.',
-    );
+    throw new BadRequestException('Idempotency-Key header must be a valid UUID v4.');
   }
 }

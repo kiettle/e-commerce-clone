@@ -31,7 +31,7 @@ flowchart LR
     Browser["React demo or API client"] -->|REST + JWT| Gateway["API Gateway"]
     Gateway -->|gRPC| Auth["Auth service"]
     Gateway -->|gRPC| Product["Product service"]
-    Gateway -->|REST + internal user header| Cart["Cart service"]
+    Gateway -->|gRPC| Cart["Cart service"]
     Cart -->|gRPC snapshot lookup| Product
     Cart -->|gRPC reserve/commit/release| Inventory["Inventory service"]
     Cart -->|gRPC create/find| Order["Order service"]
@@ -58,8 +58,11 @@ across service boundaries.
 | `auth-service`      | 4005 / gRPC 9005 | Users, login, JWT generation, token validation                      |
 | `product-service`   | 4001 / gRPC 9001 | Catalog, flash sales, effective pricing, transactional outbox       |
 | `inventory-service` | 4003 / gRPC 9003 | Normal/sale stock projections and reserve/commit/release            |
-| `cart-service`      |             4002 | Durable carts, price snapshots, and checkout orchestration          |
+| `cart-service`      |             4002 / gRPC 9002 | Durable carts, price snapshots, and checkout orchestration          |
 | `order-service`     | 4004 / gRPC 9004 | Idempotent checkout orders and server-calculated totals             |
+
+HTTP ports on the five owning services are private operational/health surfaces;
+their business APIs use the listed gRPC ports. Port 4000 is the public HTTP edge.
 
 ## Communication Map
 
@@ -68,7 +71,7 @@ across service boundaries.
 | Client  | Gateway             | REST/JSON                                    | Browser-friendly public API and Swagger documentation   |
 | Gateway | Auth                | gRPC/Protobuf                                | Typed synchronous login and token-validation calls      |
 | Gateway | Product             | gRPC/Protobuf                                | Typed internal catalog and flash-sale contracts         |
-| Gateway | Cart                | REST/JSON                                    | Thin forwarding with trusted authenticated user context |
+| Gateway | Cart | gRPC/Protobuf | Typed cart operations with authenticated identity and checkout idempotency key |
 | Cart    | Product             | gRPC/Protobuf                                | Fetch a typed product/SKU pricing snapshot              |
 | Cart    | Inventory and Order | gRPC/Protobuf                                | Typed synchronous checkout operations                   |
 | Product | Inventory           | Kafka-compatible event with Protobuf payload | Decouple product persistence from stock initialization  |
@@ -216,16 +219,50 @@ token. The public `/health`, `/hello`, and `/docs` surfaces do not. The gateway
 validates tokens and roles through auth-service gRPC. Product and flash-sale
 mutations require `ADMIN`; authenticated users may use the read endpoints. For
 cart routes, the gateway passes the authenticated user ID to cart-service
-through the internal `x-user-id` header.
+through the internal gRPC `user_id` request field.
 
 ### gRPC Contracts
 
 - Auth: `Login`, `ValidateToken`
 - Product: catalog, flash-sale, and effective-price snapshot operations
 - Inventory: `ReserveStock`, `CommitStock`, `ReleaseStock`
+- Cart: `GetActiveCart`, `AddCartItem`, `UpdateCartItem`, `DeleteCartItem`, `CheckoutCart`, `GetCheckoutStatus`
 - Order: `CreateOrder`, `GetOrderByCheckoutId`
 
 Shared protobuf files live in `libs/proto`.
+
+## Internal gRPC operation and failure policy
+
+Only the gateway exposes business HTTP APIs and Swagger. Auth and cart no
+longer expose duplicate REST business routes; services retain private HTTP
+health checks. Internal gRPC links still require network isolation: the
+transport change does not add service identity or TLS.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `CART_GRPC_URL` | `localhost:9002` for clients | Cart RPC address; server binds this address when explicitly set |
+| `CART_GRPC_PORT` | `9002` | Cart server/client fallback port |
+| `GRPC_REQUEST_TIMEOUT_MS` | `5000` | Native deadline for each gateway/cart RPC call |
+| `GATEWAY_CHECKOUT_TIMEOUT_MS` | `30000` | Gateway-to-cart checkout deadline; must exceed the ordinary timeout |
+| `KAFKA_CONSUMER_SHUTDOWN_TIMEOUT_MS` | `10000` | Bounded consumer drain and disconnect waits |
+
+`CART_SERVICE_PORT=4002` is now the cart health port. `CART_SERVICE_URL` and
+`GATEWAY_HTTP_MAX_CONNECTIONS` are retired. Set server bind and client dial
+addresses separately in each process; `scripts/start-demo.sh` does this for
+configured ports.
+
+Unavailable RPC dependencies return HTTP `503`; expired gateway RPC deadlines
+return `504`. A `504` does not prove that checkout failed or rolled back. Retry
+the same checkout with the original idempotency key. Only a persisted pending
+result returns `202`. Inner inventory/order timeouts remain uncertain outcomes
+and persist the existing reconciliation action; they never trigger unsafe stock
+release or automatic gateway replay. Per-call deadlines do not bound database
+execution or the complete multi-service workflow.
+
+Shutdown stops workers and consumers before closing clients and database
+connections. Work unfinished at the shutdown limit remains recoverable through
+leases or uncommitted Kafka messages. The service does not treat RPC cancellation
+as a business cancellation.
 
 ## Technology Choices
 
@@ -233,8 +270,8 @@ Shared protobuf files live in `libs/proto`.
 | ----------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | NestJS + TypeScript           | Modules, dependency injection, DTO validation, HTTP and gRPC adapters | Productive structure, with more framework ceremony than a small service requires |
 | Prisma + PostgreSQL           | Separate schema and database per stateful service                     | Strong local transactions, but no cross-service transaction or join              |
-| REST/JSON                     | Public gateway and gateway-to-cart forwarding                         | Browser-friendly; weaker contract enforcement than Protobuf                      |
-| gRPC + Protobuf               | Auth, product, inventory, and order service calls                      | Typed and compact; harder to debug manually and currently lacks deadlines        |
+| REST/JSON                     | Public gateway API                         | Browser-friendly; weaker contract enforcement than Protobuf                      |
+| gRPC + Protobuf               | All synchronous internal service calls                      | Explicit contracts and bounded calls; requires protobuf tooling        |
 | Redpanda/Kafka API + Protobuf | Asynchronous product and flash-sale projections                       | Decouples inventory, while at-least-once delivery requires idempotent consumers  |
 | JWT + bcrypt                  | Authentication, password verification, and gateway role enforcement   | Stateless tokens scale well, but token revocation is not implemented             |
 | React + Vite                  | Focused demo UI                                                       | Improves presentation but is not the architectural focus                         |
@@ -399,7 +436,7 @@ for 30 seconds. Name and category filters have separate hashed keys under
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PRODUCT_CACHE_ENABLED` | `false` | Enable caching; `.env.example` sets `true` for the local demo |
-| `PRODUCT_REDIS_URL` | Required when enabled | Local example: `redis://127.0.0.1:6379` |
+| `PRODUCT_REDIS_URL` | Required when enabled | Local example: `redis://127.0.0.1:6380` |
 | `PRODUCT_CACHE_TTL_SECONDS` | `30` | Expiration from cache population; hits do not renew it |
 | `PRODUCT_CACHE_TIMEOUT_MS` | `100` | Deadline for each Redis operation |
 | `PRODUCT_CACHE_DEBUG` | `false` | Log hit, miss, fill, and bypass events |
@@ -438,7 +475,7 @@ Restart product-service, or start it in its own terminal:
 
 ```bash
 docker compose up -d redis
-PRODUCT_CACHE_ENABLED=true PRODUCT_REDIS_URL=redis://127.0.0.1:6379 \
+PRODUCT_CACHE_ENABLED=true PRODUCT_REDIS_URL=redis://127.0.0.1:6380 \
   PRODUCT_CACHE_TTL_SECONDS=30 PRODUCT_CACHE_TIMEOUT_MS=100 \
   PRODUCT_CACHE_DEBUG=true npm run start:dev:product
 ```
@@ -605,19 +642,19 @@ curl -X POST http://localhost:4000/api/flash-sales/10/schedule \
   -H 'Authorization: Bearer <admin-token>'
 ```
 
-Example sale cart and checkout requests against `cart-service`:
+Example sale cart and checkout requests through the authenticated gateway:
 
 ```bash
-curl -X POST http://localhost:4002/api/cart-items \
-  -H 'Content-Type: application/json' -H 'x-user-id: 10' \
+curl -X POST http://localhost:4000/api/cart-items \
+  -H 'Content-Type: application/json' -H 'Authorization: Bearer <customer-token>' \
   -d '{"productSkuId":1001,"quantity":1}'
 
-curl -X POST http://localhost:4002/api/carts/20/checkout \
-  -H 'x-user-id: 10' \
+curl -X POST http://localhost:4000/api/carts/20/checkout \
+  -H 'Authorization: Bearer <customer-token>' \
   -H 'Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000'
 ```
 
-Definite sale failures return HTTP `400` with `FLASH_SALE_NOT_READY`,
+Definite coded sale failures return HTTP `409` with `FLASH_SALE_NOT_READY`,
 `FLASH_SALE_NOT_ACTIVE`, `FLASH_SALE_ENDED`, `FLASH_SALE_SOLD_OUT`, or
 `FLASH_SALE_LIMIT_REACHED`. An unknown transport outcome returns `202`, stores
 `RESERVE_STOCK`, and does not call order-service.
@@ -633,7 +670,11 @@ password: password123
 
 The repository includes a focused React + Vite demo client in `frontend/`. It
 uses shadcn/ui components, talks only to the public gateway, and covers login,
-catalog search, product event publishing, cart updates, and checkout UI.
+catalog search, product event publishing, cart updates, and checkout UI. Checkout
+keeps one UUID v4 key per cart in session storage across retries/reloads in the
+same browser tab and origin. It does not implement cross-device or closed-tab recovery. Pending
+results display a recovery state with an explicit retry action; only completed
+results display an order confirmation.
 
 ### One-command launch
 
@@ -723,18 +764,61 @@ and the complete demo path.
 - **Thin gateway:** it validates and forwards; catalog, cart, stock, and order
   rules stay in their owning services.
 
+## Refactor verification and interview walkthrough
+
+Run the same gates as CI, including coverage (unit assertions can pass while a
+coverage threshold fails):
+
+```bash
+npm run build:all
+npm run lint
+npm run test:coverage
+npm run test:contract
+npm run test:integration
+RUN_LOAD_PROFILE=smoke npm run test:e2e
+npm run test:e2e:product-outbox
+npm run test:load-harness
+npm run frontend:build
+npm run frontend:lint
+```
+
+For a presentation, start `ORDER_DEMO_LOST_RESPONSE_AFTER=1 npm run demo`, then
+run `GATEWAY_URL=<printed-gateway-url> npm run verify:checkout-sprint`. Show the
+same checkout/order IDs on replay, a `409` key conflict, and a lost order response
+that returns `202` and completes safely after retry. The frontend and Swagger
+are served at the URLs printed by the launcher.
+
+The launcher preserves explicit port/timeout environment overrides over `.env`.
+For example, `CART_GRPC_PORT=9102 DEMO_GATEWAY_PORT=4100 npm run demo` sets matching
+cart bind/dial ports and the frontend proxy. Other service HTTP/gRPC ports can be
+overridden with their existing `*_SERVICE_PORT`/`*_GRPC_PORT` variables. Occupied
+internal ports fail with a clear message; the launcher leaves pre-existing
+processes untouched. `Ctrl+C` stops the demo applications; Docker infrastructure
+remains running.
+
+Explain the code through gateway HTTP controller → cart gRPC client → protobuf
+contract → cart gRPC controller → existing use case. gRPC supplies the explicit
+internal request/response contract; local transactions, stable identities, and
+durable recovery protect correctness. It does not independently authenticate
+internal callers or prove faster execution.
+
+See the [verification report](docs/flash-sale-verification-report.md) for current
+results and separately labelled historical HTTP load experiments, and the
+[interview reading map](docs/interview-guide/00-index-and-reading-map.md) for
+source-linked explanations.
+
 ## Current Limitations
 
-- Reconciliation depends on a caller retrying the same checkout key; there is no
-  worker to process pending attempts automatically after a restart.
+- Reconciliation uses leased background processing with bounded retries; attempts
+  that exhaust automatic retries still require operational attention.
 - Committed and released reservations do not expire or get archived yet.
 - Scheduled sales cannot yet be cancelled, and there is no post-campaign
   allocation cleanup job.
 - Internal services trust direct network access and `cart-service` trusts the
-  gateway-provided `x-user-id` header. There is no mTLS or service identity.
+  gateway-provided gRPC user identity. There is no mTLS or service identity.
 - Product updates/deletes do not publish inventory synchronization events.
-- Service clients do not define explicit deadlines, retries, circuit breakers,
-  or backoff policies.
+- RPC clients have explicit per-call deadlines; automatic business retries and
+  circuit breakers are not enabled. Durable checkout reconciliation owns retries.
 - Health endpoints are process liveness responses; they do not verify database,
   broker, or downstream readiness.
 - Observability is limited to Nest logs and basic gateway request timing. There

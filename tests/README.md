@@ -1,8 +1,8 @@
 # Test lanes
 
-- Unit tests stay beside production code as `*.spec.ts`. They use direct construction and no Docker, database, broker, or network.
-- Contract tests use `*.contract.spec.ts` beside a transport adapter or under `tests/contract/`. They verify protobuf field numbers and boundary mappings without Docker or external services. Controlled fake gRPC servers may bind ephemeral localhost ports and must close after each test.
-- Integration tests use `*.integration.spec.ts` beside an adapter or under `tests/integration/`. The integration runner provisions disposable infrastructure and runs files serially.
+- Unit tests stay beside production code in `apps/`, `libs/`, and `frontend/src/` as `*.spec.ts`. They use direct construction and no Docker, database, broker, or network.
+- Contract tests use `*.contract.spec.ts` beside a transport adapter or under `tests/contract/`. They verify protobuf field numbers, encoding, presence, and boundary mappings without network access or external services.
+- Integration tests use `*.integration.spec.ts` beside an adapter or under `tests/integration/`. Real gRPC calls, including controlled dependency servers, belong here. The integration runner provisions disposable infrastructure and runs files serially.
 - End-to-end tests use `*.e2e.spec.ts` under `tests/e2e/` and exercise the complete application workflow.
 - Shared lane helpers belong in a lane's `support/` directory and must not use a test-file suffix.
 - Load tests belong under `tests/load/` and are not discovered by Vitest.
@@ -53,3 +53,19 @@ The older focused product/outbox demonstration remains available as
 Flash-sale load profiles live under `tests/load/` and run with k6 rather than
 Vitest. See [load/README.md](load/README.md) for fixture setup, profile commands,
 thresholds, and the mandatory post-run database verification.
+
+## gRPC cutover regression evidence
+
+- [Cart protobuf](contract/cart-proto.contract.spec.ts): six RPCs, oneof checkout outcomes, field presence, and large IDs.
+- [Cart transport](integration/cart-grpc.integration.spec.ts): all operations, missing quantity versus zero, structured errors, real deadlines, and lost-response replay.
+- [Existing clients](integration/grpc-client-failure-injection.integration.spec.ts): auth roles, inventory/order classifications, and int64 identity preservation.
+- [Native deadlines](integration/grpc-deadlines.integration.spec.ts): stalled auth/product/inventory/order handlers fail within the configured caller deadline.
+- [Shutdown ordering](integration/cart-shutdown.integration.spec.ts): worker draining precedes client/database closure, including a rejected claim during shutdown.
+- [Frontend identity](../frontend/src/lib/api.spec.ts): a pending result or timeout never silently replaces the checkout key, including module reloads.
+
+The full gateway suite additionally checks that internal cart/auth HTTP business
+routes are absent while their health endpoints still respond. HTTP `202` means
+persisted recoverable work; `503` means unavailable and `504` means the gateway
+stopped waiting. Run `npm run test:coverage` as well as `test:unit`: CI enforces
+70% statements/lines/functions and 60% branches, and passing unit assertions alone
+does not prove that coverage passes.

@@ -180,10 +180,10 @@ require_command npm
 start_test_redis
 
 read -r GATEWAY_PORT AUTH_HTTP_PORT AUTH_GRPC_PORT PRODUCT_PORT PRODUCT_GRPC_PORT INVENTORY_HTTP_PORT \
-  INVENTORY_GRPC_PORT CART_PORT ORDER_HTTP_PORT ORDER_GRPC_PORT KAFKA_PORT < <(
+  INVENTORY_GRPC_PORT CART_PORT CART_GRPC_PORT ORDER_HTTP_PORT ORDER_GRPC_PORT KAFKA_PORT < <(
   node -e '
 const net = require("node:net");
-const servers = Array.from({ length: 11 }, () => net.createServer());
+const servers = Array.from({ length: 12 }, () => net.createServer());
 Promise.all(servers.map((server) => new Promise((resolve, reject) => {
   server.once("error", reject);
   server.listen(0, "127.0.0.1", resolve);
@@ -275,7 +275,8 @@ COMMON_KAFKA_ENV=(
   "FLASH_SALE_EVENTS_TOPIC=${FLASH_SALE_TOPIC}"
 )
 
-export GATEWAY_HTTP_MAX_CONNECTIONS="${GATEWAY_HTTP_MAX_CONNECTIONS:-64}"
+export GRPC_REQUEST_TIMEOUT_MS="${GRPC_REQUEST_TIMEOUT_MS:-5000}"
+export GATEWAY_CHECKOUT_TIMEOUT_MS="${GATEWAY_CHECKOUT_TIMEOUT_MS:-30000}"
 export LOAD_STACK_DESCRIPTION="One process per service; ${POSTGRES_IMAGE} with five databases; ${REDPANDA_IMAGE} single broker, one CPU, 512 MiB; checkout recovery poll 60000 ms"
 echo '[gateway-e2e] Starting all six built services...'
 # Prove product-service can start and pass its health check without Redis.
@@ -306,7 +307,7 @@ start_service order-service \
 ORDER_PID="$LAST_PID"
 
 start_service cart-service \
-  NODE_ENV=test PORT="$CART_PORT" CART_DATABASE_URL="$CART_DATABASE_URL" \
+  NODE_ENV=test PORT="$CART_PORT" CART_GRPC_URL="0.0.0.0:${CART_GRPC_PORT}" CART_DATABASE_URL="$CART_DATABASE_URL" \
   PRODUCT_GRPC_URL="127.0.0.1:${PRODUCT_GRPC_PORT}" \
   INVENTORY_GRPC_URL="127.0.0.1:${INVENTORY_GRPC_PORT}" \
   ORDER_GRPC_URL="127.0.0.1:${ORDER_GRPC_PORT}" \
@@ -318,7 +319,7 @@ CART_PID="$LAST_PID"
 start_service gateway \
   NODE_ENV=test PORT="$GATEWAY_PORT" AUTH_GRPC_URL="127.0.0.1:${AUTH_GRPC_PORT}" \
   PRODUCT_GRPC_URL="127.0.0.1:${PRODUCT_GRPC_PORT}" \
-  CART_SERVICE_URL="http://127.0.0.1:${CART_PORT}"
+  CART_GRPC_URL="127.0.0.1:${CART_GRPC_PORT}"
 GATEWAY_PID="$LAST_PID"
 
 wait_for_http auth "http://127.0.0.1:${AUTH_HTTP_PORT}/health" "$AUTH_PID"
@@ -332,6 +333,9 @@ wait_for_test_redis
 
 export GATEWAY_E2E_ACTIVE=1
 export E2E_GATEWAY_URL="http://127.0.0.1:${GATEWAY_PORT}"
+export E2E_CART_HEALTH_URL="http://127.0.0.1:${CART_PORT}/health"
+export E2E_AUTH_HEALTH_URL="http://127.0.0.1:${AUTH_HTTP_PORT}/health"
+export E2E_CART_GRPC_URL="127.0.0.1:${CART_GRPC_PORT}"
 export E2E_PRODUCT_HEALTH_URL="http://127.0.0.1:${PRODUCT_PORT}/health"
 export E2E_REDPANDA_CONTAINER="$REDPANDA_CONTAINER"
 export E2E_PRODUCT_TOPIC="$PRODUCT_TOPIC"

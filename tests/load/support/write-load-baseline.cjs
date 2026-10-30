@@ -52,8 +52,8 @@ async function main() {
     memoryBytes: os.totalmem(),
     os: `${os.platform()} ${os.release()} ${os.arch()}`,
     node: process.version,
-    undici: require('undici/package.json').version,
-    gatewayHttpMaxConnections: process.env.GATEWAY_HTTP_MAX_CONNECTIONS ?? 'not recorded',
+    internalTransport: 'grpc',
+    grpcRequestTimeoutMs: process.env.GRPC_REQUEST_TIMEOUT_MS ?? '5000',
     stack: process.env.LOAD_STACK_DESCRIPTION ?? 'externally managed; document separately',
     requestTimeout: process.env.LOAD_REQUEST_TIMEOUT || '30s',
 
@@ -101,7 +101,7 @@ This is a local or CI development baseline. It is not a production-capacity clai
 Source: \`${source.commit}\`; dirty working tree: **${source.dirty}**.
 Code SHA-256 (includes untracked source): \`${source.codeSha256}\`.
 k6: ${environment.k6}. Docker: ${environment.docker}.
-Undici: ${environment.undici}; gateway HTTP connections/origin: ${environment.gatewayHttpMaxConnections}.
+Internal transport: ${environment.internalTransport}; RPC deadline: ${environment.grpcRequestTimeoutMs}ms.
 Stack: ${environment.stack}. HTTP request timeout: ${environment.requestTimeout}.
 
 ## Profile

@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowRight,
   Boxes,
@@ -39,7 +32,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useAuth } from '@/context/auth-context';
 import { api, ApiError } from '@/lib/api';
 import { getInitials } from '@/lib/utils';
-import type { Cart, Category, CheckoutResult, CreateProductInput, Product } from '@/types/api';
+import type { Cart, Category, CheckoutResponse, CreateProductInput, Product } from '@/types/api';
 
 type WorkspaceData = [Product[], Category[], Cart];
 
@@ -218,10 +211,7 @@ export function CatalogPage() {
         (categoryId === 'all' || created.categoryId === Number(categoryId));
 
       if (matchesCurrentView) {
-        setProducts((current) => [
-          created,
-          ...current.filter((item) => item.id !== created.id),
-        ]);
+        setProducts((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       }
       setNewlyPublishedId(created.id);
       toast.success('Product created', {
@@ -238,9 +228,9 @@ export function CatalogPage() {
     }
   }
 
-  async function handleCheckout(): Promise<CheckoutResult> {
+  async function handleCheckout(): Promise<CheckoutResponse> {
     if (!session || !cart) throw new Error('There is no active cart to check out.');
-    let result: CheckoutResult;
+    let result: CheckoutResponse;
     try {
       result = await api.checkout(session.token, cart.id);
     } catch (cause) {
@@ -249,6 +239,7 @@ export function CatalogPage() {
       }
       throw cause;
     }
+    if (result.status === 'RECONCILIATION_REQUIRED') return result;
     try {
       setCart(await api.getCart(session.token));
     } catch {
@@ -314,7 +305,10 @@ export function CatalogPage() {
               <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-primary">
                 <Boxes className="size-3.5" /> Live catalog
               </div>
-              <h2 id="catalog-heading" className="text-2xl font-semibold tracking-[-0.035em] sm:text-3xl">
+              <h2
+                id="catalog-heading"
+                className="text-2xl font-semibold tracking-[-0.035em] sm:text-3xl"
+              >
                 Products from product-service
               </h2>
               <p className="mt-2 text-sm text-muted-foreground">
@@ -322,7 +316,11 @@ export function CatalogPage() {
               </p>
             </div>
 
-            <Button variant="outline" className="self-start bg-white lg:self-auto" onClick={() => setCreateOpen(true)}>
+            <Button
+              variant="outline"
+              className="self-start bg-white lg:self-auto"
+              onClick={() => setCreateOpen(true)}
+            >
               <Plus /> Create product
             </Button>
           </div>
@@ -387,11 +385,7 @@ export function CatalogPage() {
               <p className="mt-1.5 text-sm text-muted-foreground">
                 Clear the filters or publish a new demo product.
               </p>
-              <Button
-                variant="link"
-                className="mt-2"
-                onClick={clearFilters}
-              >
+              <Button variant="link" className="mt-2" onClick={clearFilters}>
                 Clear filters <ArrowRight />
               </Button>
             </div>

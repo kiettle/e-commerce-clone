@@ -1,3 +1,4 @@
+import { Metadata, type CallOptions } from '@grpc/grpc-js';
 import { Observable } from 'rxjs';
 
 export interface LoginGrpcRequest {
@@ -23,6 +24,14 @@ export interface ValidateTokenGrpcResponse {
 }
 
 export interface AuthGrpcService {
-  login(request: LoginGrpcRequest): Observable<LoginGrpcResponse>;
-  validateToken(request: ValidateTokenGrpcRequest): Observable<ValidateTokenGrpcResponse>;
+  login(
+    request: LoginGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<LoginGrpcResponse>;
+  validateToken(
+    request: ValidateTokenGrpcRequest,
+    metadata?: Metadata,
+    options?: CallOptions,
+  ): Observable<ValidateTokenGrpcResponse>;
 }

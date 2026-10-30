@@ -1,4 +1,11 @@
-import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import { drainOnShutdown, grpcTimeoutMs } from '@app/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+  OnApplicationShutdown,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Consumer, EachMessagePayload, Kafka } from 'kafkajs';
 import { HandleFlashSaleScheduledUseCase } from '../../application/use-cases/handle-flash-sale-scheduled.use-case';
@@ -6,17 +13,24 @@ import { ConflictingFlashSaleEventError } from '../../domain/errors/conflicting-
 import { ProtobufFlashSaleEventDeserializer } from './protobuf-flash-sale-event-deserializer';
 
 @Injectable()
-export class KafkaFlashSaleEventConsumer implements OnApplicationBootstrap, OnModuleDestroy {
+export class KafkaFlashSaleEventConsumer
+  implements OnApplicationBootstrap, OnModuleDestroy, OnApplicationShutdown
+{
   private readonly logger = new Logger(KafkaFlashSaleEventConsumer.name);
   private readonly consumer: Consumer;
   private readonly topic: string;
   private started = false;
+  private readonly shutdownTimeoutMs: number;
 
   constructor(
     config: ConfigService,
     private readonly deserializer: ProtobufFlashSaleEventDeserializer,
     private readonly handleFlashSaleScheduled: HandleFlashSaleScheduledUseCase,
   ) {
+    this.shutdownTimeoutMs = grpcTimeoutMs(
+      config.get('KAFKA_CONSUMER_SHUTDOWN_TIMEOUT_MS', 10000),
+      'KAFKA_CONSUMER_SHUTDOWN_TIMEOUT_MS',
+    );
     const brokers = (config.get<string>('KAFKA_BROKERS') ?? 'localhost:9094')
       .split(',')
       .map((broker) => broker.trim())
@@ -38,8 +52,18 @@ export class KafkaFlashSaleEventConsumer implements OnApplicationBootstrap, OnMo
 
   async onModuleDestroy(): Promise<void> {
     if (this.started) {
-      await this.consumer.disconnect();
+      await drainOnShutdown(this.consumer.stop(), this.shutdownTimeoutMs, (reason) =>
+        this.logger.warn(
+          `Kafka consumer drain ${reason}; unfinished messages will be redelivered.`,
+        ),
+      );
     }
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    await drainOnShutdown(this.consumer.disconnect(), this.shutdownTimeoutMs, (reason) =>
+      this.logger.warn(`Kafka disconnect ${reason}.`),
+    );
   }
 
   private async handleMessage(payload: EachMessagePayload): Promise<void> {

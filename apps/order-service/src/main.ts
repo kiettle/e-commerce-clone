@@ -6,10 +6,9 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const port = Number(process.env.PORT ?? process.env.ORDER_SERVICE_PORT ?? 4004);
-  const grpcUrl =
-    process.env.ORDER_GRPC_URL ??
-    `0.0.0.0:${process.env.ORDER_GRPC_PORT ?? 9004}`;
+  const grpcUrl = process.env.ORDER_GRPC_URL ?? `0.0.0.0:${process.env.ORDER_GRPC_PORT ?? 9004}`;
 
   app.useGlobalPipes(
     new ValidationPipe({

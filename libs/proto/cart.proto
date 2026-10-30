@@ -1,0 +1,75 @@
+syntax = "proto3";
+package cart;
+
+service CartService {
+  rpc GetActiveCart (UserRequest) returns (CartResponse);
+  rpc AddCartItem (AddCartItemRequest) returns (CartResponse);
+  rpc UpdateCartItem (UpdateCartItemRequest) returns (CartResponse);
+  rpc DeleteCartItem (CartItemRequest) returns (CartResponse);
+  rpc CheckoutCart (CheckoutCartRequest) returns (CheckoutCartResponse);
+  rpc GetCheckoutStatus (CheckoutStatusRequest) returns (CheckoutStatusResponse);
+}
+message UserRequest { int64 user_id = 1; }
+message AddCartItemRequest {
+  int64 user_id = 1;
+  int64 product_sku_id = 2;
+  optional int32 quantity = 3;
+}
+message UpdateCartItemRequest {
+  int64 user_id = 1;
+  int64 cart_item_id = 2;
+  optional int32 quantity = 3;
+}
+message CartItemRequest { int64 user_id = 1; int64 cart_item_id = 2; }
+message CheckoutCartRequest {
+  int64 user_id = 1;
+  int64 cart_id = 2;
+  string idempotency_key = 3;
+}
+message CheckoutStatusRequest { int64 user_id = 1; string checkout_id = 2; }
+message CartResponse {
+  int64 id = 1;
+  int64 user_id = 2;
+  string status = 3;
+  double total_amount = 4;
+  repeated CartItemResponse items = 5;
+}
+message CartItemResponse {
+  int64 id = 1;
+  int64 cart_id = 2;
+  int64 product_id = 3;
+  string product_name = 4;
+  optional string image_url = 5;
+  int64 product_sku_id = 6;
+  string sku_code = 7;
+  double price = 8;
+  double regular_price = 9;
+  string price_source = 10;
+  optional int64 flash_sale_id = 11;
+  optional int64 flash_sale_item_id = 12;
+  optional string sale_ends_at = 13;
+  optional int32 max_quantity_per_user = 14;
+  int32 quantity = 15;
+  double subtotal = 16;
+}
+message CompletedCheckout {
+  string checkout_id = 1;
+  int64 order_id = 2;
+  CartResponse cart = 3;
+}
+message PendingCheckout { string checkout_id = 1; }
+message CheckoutCartResponse {
+  oneof outcome {
+    CompletedCheckout completed = 1;
+    PendingCheckout pending = 2;
+  }
+}
+message CheckoutStatusResponse {
+  string checkout_id = 1;
+  int64 cart_id = 2;
+  string status = 3;
+  optional int64 order_id = 4;
+  optional string last_error = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}

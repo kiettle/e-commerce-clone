@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { beforeEach, describe, expect, it, vi, type Mocked } from 'vitest';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
-import { CartGatewayClient } from '../../infrastructure/http/cart-gateway.client';
+import { CartGatewayClient } from '../../infrastructure/grpc/cart-gateway.client';
 import { CartsGatewayController } from './carts-gateway.controller';
 
 describe('CartsGatewayController checkout', () => {
@@ -23,10 +23,7 @@ describe('CartsGatewayController checkout', () => {
 
   it('declares successful checkout as HTTP 200', () => {
     expect(
-      Reflect.getMetadata(
-        HTTP_CODE_METADATA,
-        CartsGatewayController.prototype.checkoutCart,
-      ),
+      Reflect.getMetadata(HTTP_CODE_METADATA, CartsGatewayController.prototype.checkoutCart),
     ).toBe(200);
   });
 
@@ -53,9 +50,9 @@ describe('CartsGatewayController checkout', () => {
   it.each([undefined, '', 'not-a-uuid', '550e8400-e29b-11d4-a716-446655440000'])(
     'rejects a missing or invalid key: %s',
     async (invalidKey) => {
-      await expect(
-        controller.checkoutCart(user, 20, invalidKey, response),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(controller.checkoutCart(user, 20, invalidKey, response)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
       expect(client.checkoutCart).not.toHaveBeenCalled();
     },
   );

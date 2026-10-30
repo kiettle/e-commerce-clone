@@ -2,7 +2,7 @@ import type {
   AuthenticatedUser,
   Cart,
   Category,
-  CheckoutResult,
+  CheckoutResponse,
   CreateProductInput,
   HealthResponse,
   Product,
@@ -68,13 +68,9 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
 
-  validate: (token: string) =>
-    request<AuthenticatedUser>('/api/auth/validate', { token }),
+  validate: (token: string) => request<AuthenticatedUser>('/api/auth/validate', { token }),
 
-  getProducts: (
-    token: string,
-    query?: { name?: string; categoryId?: number },
-  ) => {
+  getProducts: (token: string, query?: { name?: string; categoryId?: number }) => {
     const params = new URLSearchParams();
     if (query?.name) params.set('name', query.name);
     if (query?.categoryId) params.set('categoryId', String(query.categoryId));
@@ -82,8 +78,7 @@ export const api = {
     return request<Product[]>(`/api/products${suffix}`, { token });
   },
 
-  getCategories: (token: string) =>
-    request<Category[]>('/api/categories', { token }),
+  getCategories: (token: string) => request<Category[]>('/api/categories', { token }),
 
   createProduct: (token: string, input: CreateProductInput) =>
     request<Product>('/api/products', {
@@ -114,9 +109,18 @@ export const api = {
       token,
     }),
 
-  checkout: (token: string, cartId: number) =>
-    request<CheckoutResult>(`/api/carts/${cartId}/checkout`, {
+  checkout: (token: string, cartId: number) => {
+    // Keep one identity for this cart across retries and page reloads.
+    const storageKey = `marketflow:checkout:v1:${API_BASE_URL}:${cartId}`;
+    let key = sessionStorage.getItem(storageKey);
+    if (!key) {
+      key = crypto.randomUUID();
+      sessionStorage.setItem(storageKey, key);
+    }
+    return request<CheckoutResponse>(`/api/carts/${cartId}/checkout`, {
       method: 'POST',
       token,
-    }),
+      headers: { 'Idempotency-Key': key },
+    });
+  },
 };

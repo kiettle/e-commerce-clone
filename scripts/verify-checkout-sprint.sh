@@ -139,7 +139,7 @@ fi
 docker compose exec -T postgres-auth psql -U postgres -d auth_db \
   -v ON_ERROR_STOP=1 -c \
   "INSERT INTO \"users\" (\"id\", \"email\", \"password\", \"role\")
-   VALUES ($VERIFY_USER_ID, '$VERIFY_EMAIL', '$VERIFY_PASSWORD_HASH', 'CUSTOMER');" \
+   VALUES ($VERIFY_USER_ID, '$VERIFY_EMAIL', '$VERIFY_PASSWORD_HASH', 'USER');" \
   >/dev/null
 
 request POST "$BASE_URL/api/auth/login" '' '' \

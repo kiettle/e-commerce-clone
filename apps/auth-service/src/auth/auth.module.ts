@@ -10,11 +10,10 @@ import { PrismaUserRepository } from './infrastructure/persistence/prisma/user.p
 import { BcryptPasswordHasher } from './infrastructure/security/bcrypt-password-hasher';
 import { JwtTokenService } from './infrastructure/security/jwt-token.service';
 import { AuthGrpcController } from './presentation/grpc/auth.grpc.controller';
-import { AuthHttpController } from './presentation/http/auth.controller';
 
 @Module({
   imports: [JwtModule.register({})],
-  controllers: [AuthHttpController, AuthGrpcController],
+  controllers: [AuthGrpcController],
   providers: [
     PrismaService,
     {

@@ -32,6 +32,23 @@ describe('ProductOutboxPublisherWorker', () => {
     vi.restoreAllMocks();
   });
 
+  it('finishes shutdown after an in-flight claim fails and schedules no further poll', async () => {
+    const gate = deferred<void>();
+    vi.mocked(outbox.claimBatch).mockImplementation(async () => {
+      await gate.promise;
+      throw new Error('Storage unavailable.');
+    });
+    worker.onApplicationBootstrap();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outbox.claimBatch).toHaveBeenCalledOnce();
+    const shutdown = worker.onModuleDestroy();
+    gate.resolve(undefined);
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(expect.stringContaining('drain failed'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outbox.claimBatch).toHaveBeenCalledOnce();
+  });
+
   it('waits for the next poll after an empty batch', async () => {
     vi.mocked(outbox.claimBatch).mockResolvedValue([]);
 

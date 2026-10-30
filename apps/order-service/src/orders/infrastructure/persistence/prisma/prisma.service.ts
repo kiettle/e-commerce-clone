@@ -1,13 +1,10 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../../../../../../../prisma/generated/order';
 
 @Injectable()
-export class PrismaService
-  extends PrismaClient
-  implements OnModuleDestroy
-{
+export class PrismaService extends PrismaClient implements OnApplicationShutdown {
   constructor(configService: ConfigService) {
     const databaseUrl = configService.get<string>('ORDER_DATABASE_URL');
 
@@ -20,7 +17,7 @@ export class PrismaService
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
+  async onApplicationShutdown(): Promise<void> {
     await this.$disconnect();
   }
 }

@@ -1,3 +1,4 @@
+import { drainOnShutdown } from '@app/common';
 import { Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
@@ -63,14 +64,11 @@ export class CheckoutReconciliationWorker implements OnApplicationBootstrap, OnM
 
     if (!this.currentPass) return;
 
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([
-      this.currentPass,
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, this.shutdownTimeoutMs);
-      }),
-    ]);
-    if (timeout) clearTimeout(timeout);
+    await drainOnShutdown(this.currentPass, this.shutdownTimeoutMs, (reason) =>
+      this.logger.warn(
+        `Checkout reconciliation drain ${reason}; persisted work remains recoverable.`,
+      ),
+    );
   }
 
   private scheduleNextPass(delayMs: number): void {

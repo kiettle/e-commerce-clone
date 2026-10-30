@@ -134,6 +134,7 @@ describeWithKafka('Kafka event delivery and duplicate consumption', () => {
     } finally {
       await worker.onModuleDestroy();
       await consumer.onModuleDestroy();
+      await consumer.onApplicationShutdown();
       await publisher.onApplicationShutdown();
       await kafka.close();
     }
@@ -185,6 +186,7 @@ describeWithKafka('Kafka event delivery and duplicate consumption', () => {
     } finally {
       errorLog.mockRestore();
       await consumer.onModuleDestroy();
+      await consumer.onApplicationShutdown();
       await publisher.onApplicationShutdown();
       await kafka.close();
     }
@@ -248,6 +250,7 @@ describeWithKafka('Kafka event delivery and duplicate consumption', () => {
     } finally {
       await worker.onModuleDestroy();
       await consumer.onModuleDestroy();
+      await consumer.onApplicationShutdown();
       await publisher.onApplicationShutdown();
       await kafka.close();
     }
@@ -302,6 +305,7 @@ describeWithKafka('Kafka event delivery and duplicate consumption', () => {
       } finally {
         await producer.disconnect();
         await consumer.onModuleDestroy();
+        await consumer.onApplicationShutdown();
         await kafka.close();
       }
     },

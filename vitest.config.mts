@@ -12,7 +12,7 @@ export default defineConfig({
     name: 'unit',
     reporters: ['default', new LaneReporter('unit')],
     environment: 'node',
-    include: ['apps/**/*.spec.ts', 'libs/**/*.spec.ts'],
+    include: ['apps/**/*.spec.ts', 'libs/**/*.spec.ts', 'frontend/src/**/*.spec.ts'],
     exclude: ['**/*.contract.spec.ts', '**/*.integration.spec.ts', '**/*.e2e.spec.ts'],
     testTimeout: 5_000,
     hookTimeout: 10_000,

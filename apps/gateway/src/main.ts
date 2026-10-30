@@ -7,6 +7,7 @@ import { RequestLoggingInterceptor } from './common/interceptors/request-logging
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const port = Number(process.env.PORT ?? process.env.GATEWAY_PORT ?? 4000);
 
   app.useGlobalPipes(

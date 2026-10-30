@@ -23,12 +23,8 @@ import {
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
-import { CartGatewayClient } from '../../infrastructure/http/cart-gateway.client';
-import {
-  AddCartItemRequestDto,
-  CartResponseDto,
-  UpdateCartItemRequestDto,
-} from './dto/cart.dto';
+import { CartGatewayClient } from '../../infrastructure/grpc/cart-gateway.client';
+import { AddCartItemRequestDto, CartResponseDto, UpdateCartItemRequestDto } from './dto/cart.dto';
 
 @ApiTags('cart')
 @ApiBearerAuth()
@@ -79,4 +75,3 @@ export class CartItemsGatewayController {
     return this.cartClient.deleteCartItem(user.userId, cartItemId);
   }
 }
-

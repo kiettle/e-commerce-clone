@@ -28,6 +28,23 @@ describe('CheckoutReconciliationWorker', () => {
     vi.useRealTimers();
   });
 
+  it('finishes shutdown after an in-flight claim fails and schedules no further poll', async () => {
+    const gate = deferred<void>();
+    vi.mocked(attempts.claimDue).mockImplementation(async () => {
+      await gate.promise;
+      throw new Error('Storage unavailable.');
+    });
+    worker.onApplicationBootstrap();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(attempts.claimDue).toHaveBeenCalledOnce();
+    const shutdown = worker.onModuleDestroy();
+    gate.resolve(undefined);
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(expect.stringContaining('drain failed'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(attempts.claimDue).toHaveBeenCalledOnce();
+  });
+
   it('resumes every persisted recovery action', async () => {
     const actions = Object.values(ReconciliationAction);
     attempts.claimDue.mockResolvedValue(

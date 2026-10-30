@@ -37,6 +37,8 @@ interface CartResponse {
   id: number;
   status: string;
   items: Array<{
+    id: number;
+    quantity: number;
     productSkuId: number;
     price: number;
     regularPrice: number;
@@ -90,6 +92,29 @@ describe.sequential('full gateway stack', () => {
   afterAll(async () => {
     if (databases) {
       await disconnectIntegrationPrismaClients(databases);
+    }
+  });
+
+  it('keeps internal health endpoints but removes duplicate HTTP business APIs', async () => {
+    for (const name of ['E2E_CART_HEALTH_URL', 'E2E_AUTH_HEALTH_URL']) {
+      const health = requiredEnvironment(name);
+      expect((await fetch(health)).status).toBe(200);
+      const base = health.replace(/\/health$/, '');
+      const paths =
+        name === 'E2E_CART_HEALTH_URL'
+          ? ['/api/carts/me', '/api/checkouts/id']
+          : ['/api/auth/validate'];
+      for (const path of paths) expect((await fetch(base + path)).status).toBe(404);
+      const path = name === 'E2E_CART_HEALTH_URL' ? '/api/cart-items' : '/api/auth/login';
+      expect(
+        (
+          await fetch(base + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          })
+        ).status,
+      ).toBe(404);
     }
   });
 
@@ -416,6 +441,47 @@ describe.sequential('full gateway stack', () => {
     expect(
       await databases.cart.checkoutAttempt.count({ where: { cartId: BigInt(newCart.id) } }),
     ).toBe(0);
+  });
+
+  it('preserves cart mutations, zero removal, and owner-scoped checkout polling', async () => {
+    const cart = await addItem(customerOneToken, regularProduct.skus[0].id);
+    const item = cart.items.find((item) => item.productSkuId === regularProduct.skus[0].id)!;
+    const updated = await request<CartResponse>(`/api/cart-items/${item.id}`, {
+      method: 'PUT',
+      token: customerOneToken,
+      body: { quantity: 2 },
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.body.items.find((entry) => entry.id === item.id)?.quantity).toBe(2);
+    const removed = await request<CartResponse>(`/api/cart-items/${item.id}`, {
+      method: 'PUT',
+      token: customerOneToken,
+      body: { quantity: 0 },
+    });
+    expect(removed.status).toBe(200);
+    expect(removed.body.items.some((entry) => entry.id === item.id)).toBe(false);
+    const added = await addItem(customerOneToken, regularProduct.skus[0].id);
+    const deleted = await request<CartResponse>(
+      `/api/cart-items/${added.items.find((entry) => entry.productSkuId === regularProduct.skus[0].id)!.id}`,
+      { method: 'DELETE', token: customerOneToken },
+    );
+    expect(deleted.status).toBe(200);
+    const attempt = await databases.cart.checkoutAttempt.findFirstOrThrow({
+      where: { idempotencyKey: regularCheckoutKey },
+    });
+    const owner = await request<Record<string, unknown>>(`/api/checkouts/${attempt.id}`, {
+      token: customerTwoToken,
+    });
+    expect(owner.status).toBe(200);
+    expect(owner.body).toMatchObject({
+      checkoutId: attempt.id,
+      status: 'COMPLETED',
+      lastError: null,
+    });
+    expect(owner.body).not.toHaveProperty('reconciliationAction');
+    expect(
+      (await request(`/api/checkouts/${attempt.id}`, { token: customerOneToken })).status,
+    ).toBe(404);
   });
 
   it('commits product and sale APIs during a broker outage and catches up after recovery', async () => {

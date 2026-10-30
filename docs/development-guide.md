@@ -13,11 +13,11 @@ The repository is one NestJS monorepo with six separately runnable services:
 
 | Service             | Owns                                          | Main interfaces                 |
 | ------------------- | --------------------------------------------- | ------------------------------- |
-| `gateway`           | Public API boundary                           | REST in; HTTP and auth gRPC out |
-| `auth-service`      | Users, passwords, and tokens                  | REST and gRPC                   |
-| `product-service`   | Catalog, flash sales, and durable outbox      | REST and Kafka producer         |
+| `gateway`           | Public API boundary                           | REST in; gRPC out |
+| `auth-service`      | Users, passwords, and tokens                  | gRPC and HTTP health           |
+| `product-service`   | Catalog, flash sales, and durable outbox      | gRPC, HTTP health, Kafka output |
 | `inventory-service` | Normal and sale stock and reservations        | Kafka consumer and gRPC         |
-| `cart-service`      | Carts, price snapshots, and checkout attempts | REST; HTTP and gRPC clients     |
+| `cart-service`      | Carts, price snapshots, and checkout attempts | gRPC server and clients           |
 | `order-service`     | Orders and order-item snapshots               | gRPC                            |
 
 Each stateful service owns its own PostgreSQL database. Never join across those
@@ -119,6 +119,46 @@ backoff. After an order is confirmed, checkout commits stock before completing
 the cart. An uncertain commit stores `COMMIT_STOCK` and retries that idempotent
 operation; it does not create another order or release inventory.
 
+## Catalog Cache Ownership
+
+Product-service owns the optional Redis search cache through an application
+port and an infrastructure adapter. Keep cache policy out of the gateway and
+do not share catalog business logic through `libs/common`. PostgreSQL remains
+authoritative; effective SKU prices, flash sales, stock, and checkout are not
+cached by this feature.
+
+Search results use a 30-second TTL from population without write invalidation
+or renewal on hits. An in-flight read can populate an older result after a
+concurrent edit, so this is not a strict post-write freshness bound. Preserve
+query semantics when deriving keys and increment the key schema version if the
+cached representation becomes incompatible. IDs serialize as decimal strings
+and timestamps as ISO strings. Invalid entries are misses; results above
+256 KiB bypass storage.
+
+Cache lookup results distinguish hit, miss, and unavailable. Only a miss permits
+population; a failed lookup skips the write for that request. Redis errors and
+timeouts must not fail successful database reads or block startup. Disabled
+caching must not create a client. Integration/E2E tests explicitly configure
+isolated Redis instances; do not inherit a developer's cache or flush shared keys.
+
+The timeout bounds each Redis command's caller wait, not the whole HTTP request
+or database query. Aborting a queued command does not cancel one already sent;
+a timed-out SET can still populate the cache later. Test read and write stalls
+against real Redis, and keep shared-client reuse and filter isolation covered.
+
+Gateway business calls use gRPC for auth, product, and cart. Cart calls product,
+inventory, and order through gRPC. Keep domain logic out of transport adapters.
+Native RPC deadlines are configured by `GRPC_REQUEST_TIMEOUT_MS` (default 5000)
+and `GATEWAY_CHECKOUT_TIMEOUT_MS` (default 30000, greater than the ordinary limit).
+Never automatically replay checkout at the gateway. Inventory/order timeouts
+are uncertain outcomes and must preserve the durable reconciliation action.
+
+Workers/consumers stop scheduling and wait for their current work up to the
+configured limit in `onModuleDestroy`; database and outgoing-client cleanup runs
+in `onApplicationShutdown`, after that wait. Failed/timed-out drains are logged
+and cleanup continues, leaving durable recovery through leases or redelivery. Enable shutdown hooks
+in each service. Do not move client/database teardown back into the worker phase.
+
 ## Testing Style
 
 Use the repository's four Vitest lanes:
@@ -189,6 +229,10 @@ npm run lint
 npm run test:unit
 npm run test:contract
 ```
+
+CI also runs `npm run test:coverage`: the same unit lane must pass its 70%
+statements/lines/functions and 60% branch thresholds. Unit tests include the
+frontend API client tests; real gRPC sockets belong in the integration lane.
 
 Run `npm run test:integration` for database or transport changes and
 `npm run test:e2e` for complete workflow changes.

@@ -15,11 +15,7 @@ export interface Category {
 }
 
 export type ProductStatus = 'ACTIVE' | 'INACTIVE' | 'OUT_OF_STOCK' | 'DELETED';
-export type ProductSkuStatus =
-  | 'AVAILABLE'
-  | 'OUT_OF_STOCK'
-  | 'DISABLED'
-  | 'DISCONTINUED';
+export type ProductSkuStatus = 'AVAILABLE' | 'OUT_OF_STOCK' | 'DISABLED' | 'DISCONTINUED';
 
 export interface ProductSku {
   id: number;
@@ -77,6 +73,8 @@ export interface Cart {
 }
 
 export interface CheckoutResult {
+  checkoutId: string;
+  status: 'COMPLETED';
   orderId: number;
   cart: Cart;
 }
@@ -85,3 +83,10 @@ export interface HealthResponse {
   status: string;
   service?: string;
 }
+
+export interface PendingCheckoutResult {
+  checkoutId: string;
+  status: 'RECONCILIATION_REQUIRED';
+}
+
+export type CheckoutResponse = CheckoutResult | PendingCheckoutResult;

@@ -53,9 +53,13 @@ describe('ProductGrpcCatalogClient', () => {
       saleEndsAt: new Date('2026-09-30T10:00:00.000Z'),
       maxPerUserQuantity: 1,
     });
-    expect(getProductSkuSnapshot).toHaveBeenCalledWith({
-      product_sku_id: '9007199254740995',
-    });
+    expect(getProductSkuSnapshot).toHaveBeenCalledWith(
+      {
+        product_sku_id: '9007199254740995',
+      },
+      expect.anything(),
+      expect.objectContaining({ deadline: expect.any(Date) }),
+    );
   });
 
   it('returns null for a missing SKU and treats transport errors as unavailable', async () => {

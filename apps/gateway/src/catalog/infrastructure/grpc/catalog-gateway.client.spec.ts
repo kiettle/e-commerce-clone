@@ -56,7 +56,11 @@ describe('CatalogGatewayClient', () => {
         ],
       },
     ]);
-    expect(searchProducts).toHaveBeenCalledWith({ name: 'Key', category_id: '2' });
+    expect(searchProducts).toHaveBeenCalledWith(
+      { name: 'Key', category_id: '2' },
+      expect.anything(),
+      expect.objectContaining({ deadline: expect.any(Date) }),
+    );
   });
 
   it('preserves structured business errors when mapping gRPC statuses to HTTP', async () => {

@@ -18,28 +18,25 @@ import {
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/lib/utils';
-import type { Cart, CheckoutResult } from '@/types/api';
+import type { Cart, CheckoutResult, CheckoutResponse, PendingCheckoutResult } from '@/types/api';
 
 interface CheckoutDialogProps {
   cart: Cart | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: () => Promise<CheckoutResult>;
+  onConfirm: () => Promise<CheckoutResponse>;
 }
 
-export function CheckoutDialog({
-  cart,
-  open,
-  onOpenChange,
-  onConfirm,
-}: CheckoutDialogProps) {
+export function CheckoutDialog({ cart, open, onOpenChange, onConfirm }: CheckoutDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<CheckoutResult | null>(null);
+  const [pending, setPending] = useState<PendingCheckoutResult | null>(null);
   const [error, setError] = useState('');
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
       setResult(null);
+      setPending(null);
       setError('');
     }
     onOpenChange(nextOpen);
@@ -49,7 +46,13 @@ export function CheckoutDialog({
     setIsSubmitting(true);
     setError('');
     try {
-      setResult(await onConfirm());
+      const response = await onConfirm();
+      if (response.status === 'RECONCILIATION_REQUIRED') {
+        setPending(response);
+      } else {
+        setPending(null);
+        setResult(response);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Checkout could not be completed.');
     } finally {
@@ -74,8 +77,8 @@ export function CheckoutDialog({
                 Order #{result.orderId} is confirmed.
               </h2>
               <p className="mt-2 text-sm leading-6 text-emerald-100/70">
-                Inventory was reserved, the order snapshot was persisted, and the cart
-                is now checked out.
+                Inventory was reserved, the order snapshot was persisted, and the cart is now
+                checked out.
               </p>
             </div>
             <div className="space-y-4 px-6 py-6">
@@ -99,10 +102,11 @@ export function CheckoutDialog({
         ) : (
           <>
             <DialogHeader className="px-6 pt-6">
-              <DialogTitle>Review checkout</DialogTitle>
+              <DialogTitle>{pending ? 'Checkout is recovering' : 'Review checkout'}</DialogTitle>
               <DialogDescription>
-                This runs the real cart orchestration across inventory and order
-                services.
+                {pending
+                  ? 'Your checkout is saved. Retry to resume it using the same checkout identity.'
+                  : 'Review your items before confirming checkout.'}
               </DialogDescription>
             </DialogHeader>
 
@@ -154,6 +158,14 @@ export function CheckoutDialog({
                 </div>
               </div>
 
+              {pending && (
+                <p
+                  role="status"
+                  className="mt-5 break-all rounded-lg border bg-secondary/50 px-3 py-2.5 text-sm"
+                >
+                  Checkout reference: {pending.checkoutId}
+                </p>
+              )}
               {error && (
                 <div
                   role="alert"
@@ -174,7 +186,7 @@ export function CheckoutDialog({
               </Button>
               <Button disabled={isSubmitting || !cart?.items.length} onClick={handleConfirm}>
                 {isSubmitting && <LoaderCircle className="animate-spin" />}
-                {isSubmitting ? 'Orchestrating…' : 'Confirm checkout'}
+                {isSubmitting ? 'Processing…' : pending ? 'Retry checkout' : 'Confirm checkout'}
               </Button>
             </DialogFooter>
           </>
